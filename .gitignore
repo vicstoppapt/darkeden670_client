@@ -1,0 +1,138 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.pdb
+*.obj
+*.lib
+*.map
+
+# Binaries
+bin/
+lib/
+*.bin
+
+# Logs
+log/
+*.log
+*.log.*
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.swp
+*.swo
+*~
+*.bak
+*.backup
+*.old
+
+# IDE files
+.vscode/
+.idea/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Database dumps (keep structure, ignore large data dumps)
+*.sql.gz
+*.sql.bz2
+database_backup/*.sql
+!database_backup/*_modern.sql
+!initdb/*.sql
+
+# Large binary files
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.tar.bz2
+
+# Client build artifacts and large files
+Client/dev-workstation/
+Client/prod-environment/
+Client/installers/
+Client/[SYSTEM]/
+
+# CVS directories
+**/CVS/
+
+# Core library build artifacts
+server/dev-workstation/src/Core/*.o
+server/dev-workstation/src/Core/*.a
+
+# Packet library build artifacts
+server/dev-workstation/src/Core/*packets/**/*.o
+server/dev-workstation/src/Core/*packets/**/*.a
+
+# Server build artifacts
+server/dev-workstation/src/server/**/*.o
+server/dev-workstation/src/server/**/*.a
+server/dev-workstation/src/server/**/*.gs.o
+server/dev-workstation/src/server/**/*.ls.o
+server/dev-workstation/src/server/**/*.ss.o
+server/dev-workstation/src/server/**/*.us.o
+
+# Makefile backups
+**/Makefile.bak*
+**/Makefile.old
+
+# Test files
+test.cpp
+testdb.cpp
+*.test
+
+# Password files (security)
+**/PASSWORDS.txt
+**/*password*
+**/*secret*
+
+# Large SQL dumps (keep modernized versions)
+modernization/database_backup/*.sql
+!modernization/initdb/*.sql
+
+# VM shared folders (temporary)
+vm_shared/
+vm_shared_*/
+
+# Old backup directories
+*_backup/
+backup_*/
+*.backup_*
+
+# Korean recovery backups (keep structure, ignore large files)
+korean_recovery_backup/**/*.o
+korean_recovery_backup/**/*.a
+
+# Configuration backups
+*.conf.backup*
+*.conf.old
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node modules (if any)
+node_modules/
+
+# Environment files
+.env
+.env.local
+
