@@ -1,0 +1,1804 @@
+#include "stdafx.h"
+
+#include "Updater.h"
+#include "UpdateManager.h"
+#include "Properties.h"
+
+#include "APM_Macro.h"
+#include "FileCheckInfoTable.h"
+
+#include "MInternetConnection.h"
+
+#include "PatchDataHeader.h"
+
+#include "PatchDataHeader.h"
+
+#include "zlib.h"
+
+#include "vfstream.h"
+
+// Guild Mark Dependencies
+#include "MGuildMarkManager.h"
+#include "MGuildInfoMapper.h"
+#include "CDirectDraw.h"
+
+#include "MD5/MD5Checksum.h"
+
+#include "VFS_Macro.h"
+
+#include "UpdateManagerThread.h"
+
+//zzi
+#include "UpdaterVersionControl.h"
+#include "GameUpdaterStringInfo.h"
+//-
+
+//20071210 - FullVersion Check 기능 추가
+#ifdef _INTERNATIONAL_VERSION_
+extern int	g_iFullVersion;
+#endif
+
+
+#define USE_PROGRESS
+#define RETRY_MAX	1
+
+#ifdef USE_PROGRESS
+	#include "ProgressST.h"
+	#include "ScreenObjectInfo.h"
+
+	extern HWND				g_hWnd;
+	extern CProgressST		g_Progress;
+	extern CProgressST		g_ProgressTotal;
+#endif
+
+
+void UpdateManager::RealData::Init()
+{
+	m_pData	= NULL;
+	m_nSize	= 0;
+}
+
+
+bool UpdateManager::RealData::Create(LPCTSTR filePath, int key)
+{
+	Destory();
+
+	std::ifstream filePatch(filePath, std::ios_base::binary);
+
+	if(filePatch.is_open())
+	{
+		PatchDataHeader patchDataHeader;
+		
+		filePatch.read((char *)&patchDataHeader, PATCHDATAHEADER_SIZE);
+
+		m_pData	= new char[patchDataHeader.UncompressSize];
+		m_nSize	= patchDataHeader.UncompressSize;
+
+		bool bOK = true;
+
+		if(patchDataHeader.Incompressible)
+		{
+			filePatch.read((char *)m_pData, patchDataHeader.UncompressSize);
+		}
+		else
+		{
+			DWORD compressSize		= patchDataHeader.CompressSize;
+			DWORD uncompressSize	= patchDataHeader.UncompressSize;
+
+			char *pCompressBuf		= new char[compressSize];
+			
+			filePatch.read((char *)pCompressBuf, compressSize);
+
+			decode_data(pCompressBuf, compressSize, key);
+
+			int result = uncompress(
+				(Bytef*)m_pData, &uncompressSize,
+				(Bytef*)pCompressBuf, compressSize);
+
+			if(result != Z_OK)
+			{
+				Assert("UpdateManager::RealData::Create() : result == Z_OK" && FALSE);
+				bOK = false;
+			}
+			
+			if(uncompressSize != patchDataHeader.UncompressSize)
+			{
+				Assert("UpdateManager::RealData::Create() : uncompressSize == patchDataHeader.UncompressSize" && FALSE);
+				bOK = false;
+			}
+			
+			delete [] pCompressBuf;
+		}
+
+		filePatch.close();
+
+		return bOK;
+	}
+
+	return false;
+}
+
+
+void UpdateManager::RealData::Destory()
+{
+	if(m_pData)
+	{
+		delete [] m_pData;
+		m_pData = NULL;
+	}
+
+	m_nSize = 0;
+}
+
+
+UpdateManager::UpdateManager()
+	: m_nMyGuildVersion(0)
+	, m_nRecentGuildVersion(0)
+{
+
+}
+
+UpdateManager::~UpdateManager()
+{
+	m_nMyGuildVersion		= 0;
+	m_nRecentGuildVersion	= 0;
+}
+
+//Nowcom
+
+//--
+
+bool UpdateManager::LoadUpdateInfo()
+{
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_READ);
+
+	bool bOK = true;
+	try
+	{
+		Properties UpdateInfo(FILE_INFO_UPDATECLIENT);
+		UpdateInfo.load();
+
+		//std::string strHttpUrl		= UpdateInfo.getProperty("HttpUrl");
+		std::string strHttpUrl		= "fk.t1dk.com";//UpdateInfo.getProperty("HttpUrl");
+
+		std::string strHttpUrl2		= UpdateInfo.getProperty("HttpUrl2");
+
+//by svi꿎桿寮狼뫘劤포角뤠옵痰,흔꼇옵痰橙賈痰구痰뫘劤포
+
+		std::string strDataDir		= "realServer";//UpdateInfo.getProperty("DataDir");
+		std::string strGuildDataDir = UpdateInfo.getProperty("GuildDataDir");
+
+		m_strDownloadPath			= "http://" + strHttpUrl + "/" + URL_RECENT_PATCH_DATA_ROOT + "/" + strDataDir;
+		m_strDownloadPath2			= "http://" + strHttpUrl2 + "/" + URL_RECENT_PATCH_DATA_ROOT + "/" + strDataDir;
+		m_strGuildDownloadPath		= "http://" + strHttpUrl + "/" + URL_RECENT_GUILDMARK_DATA_ROOT + "/" + strGuildDataDir;
+
+		m_strUpdateTempDir			= UpdateInfo.getProperty("UpdateTempDir");
+		m_strUpdateStatus			= UpdateInfo.getProperty("UpdateStatusFile");
+	}
+	catch (...)
+	{
+//		ShowErrorMessage("업데이트 정보를 읽던 중 오류가 발생하였습니다.");
+		ShowErrorMessage(_STR_ERROR_READINGUPDATEINFO_);
+		bOK = false;
+	}
+
+	iovfs_base::end_vfs();
+
+	return bOK;
+}
+
+bool UpdateManager::DownloadFile(LPCTSTR webfilePath, LPCTSTR downloadPath)
+{
+	// Download 폴더 생성
+	FullPathBuild(downloadPath);
+	
+	for(int i = 0; i < RETRY_MAX; ++i)
+	{
+		MInternetFile internetFile(webfilePath, downloadPath);
+
+		if(internetFile.IsOpen())
+		{
+#ifdef USE_PROGRESS
+			const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+			
+			g_Progress.SetPos(0);
+			g_Progress.SetRange32(0, internetFile.GetFileSize());
+			
+			DWORD beforeRecivedSize = 0;
+#endif	
+			while(internetFile.Update())
+			{
+#ifdef USE_PROGRESS
+				DWORD recivedSize = internetFile.GetReceivedSize() - beforeRecivedSize;
+				g_Progress.OffsetPos(recivedSize);
+				beforeRecivedSize = internetFile.GetReceivedSize();
+				InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+#endif
+			}
+			
+			internetFile.Flush();
+			
+			// 파일을 끝까지 잘 받았는지 확인
+			if(internetFile.GetFileSize() != internetFile.GetReceivedSize())
+			{
+				// 파일 크기가 틀리다면 지우고 다시 시도
+				Assert("internetFile.GetFileSize() != internetFile.GetReceivedSize()" && FALSE);
+				DeleteFile(downloadPath);
+				continue;
+			}
+			
+			return true;
+		}	
+		else
+		{
+#ifdef _DEBUG
+			char szBuf[MAX_PATH];
+			sprintf(szBuf, "Retry Download (%d/%d) : %s\n",
+				i + 1, RETRY_MAX, webfilePath);
+			OutputDebugString(szBuf);
+#endif
+			continue;
+		}
+	}
+
+// 	ShowErrorMessage("파일을 다운로드하던 중 오류가 발생하였습니다.",
+// #ifdef _DEBUG
+// 		webfilePath,
+// #endif
+// 		downloadPath);
+	
+	return false;
+}
+
+
+bool UpdateManager::HasPermission(const char *filename)
+{
+	//------------------------------------------------------------
+	// filename이 없을 경우 
+	//------------------------------------------------------------
+	if (filename==NULL)
+	{
+		
+		return false;
+	}
+
+	//------------------------------------------------------------
+	// 첫 문자가 "\"이면 안된다. 
+	// (최상위 디렉토리로 접근...가능한가? - -;; 그냥 함 해봄..)
+	//------------------------------------------------------------
+	if (filename[0]=='\\' || filename[0]=='/')
+	{
+		return false;
+	}
+
+	//------------------------------------------------------------
+	// ":"이 들어가면 안된다. (드라이브를 바꿀 수 있다.)
+	//------------------------------------------------------------
+	if (strchr( filename, ':' )!=NULL)
+	{
+		return false;
+	}
+	
+	//------------------------------------------------------------
+	// ".." 이 들어가면 안된다. (상위 디렉토리이므로)
+	//------------------------------------------------------------
+//	if (strstr( filename, ".." )!=NULL)
+//	{
+//		return false;
+//	}
+   
+
+	return true;
+}
+
+
+bool UpdateManager::DeleteDirectory(const char *dirName)
+{
+	if(!HasPermission(dirName)) return false;
+
+	char	newPath[MAX_PATH];
+	char	drive[_MAX_DRIVE];
+	char	dir[MAX_PATH];
+	char	szWildCard[MAX_PATH];
+	
+	HANDLE	hSrch;
+	BOOL	bResult = TRUE;
+	WIN32_FIND_DATA	wfd;
+	
+	if(strlen(dirName))
+		wsprintf(szWildCard, "%s\\*.*", dirName);
+	else
+		strcpy(szWildCard, "*.*");
+	
+	_splitpath(szWildCard, drive, dir, NULL, NULL);
+	
+	hSrch = FindFirstFile(szWildCard, &wfd);
+	
+	while(bResult)
+	{
+		wsprintf(newPath, "%s%s%s", drive, dir, wfd.cFileName);
+
+		if(wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			if(wfd.cFileName[0] != '.')
+			{
+				if(!DeleteDirectory(newPath))
+				{
+					return false;
+				}
+			}
+		}
+		else
+		{
+			DeleteFile(newPath);
+		}
+		
+		bResult = FindNextFile(hSrch, &wfd);
+	}
+	
+	FindClose(hSrch);
+	
+	char currentDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, currentDir);
+	wsprintf(newPath, "%s\\%s", currentDir, dir);
+	RemoveDirectory(newPath);
+
+	return true;
+}
+
+
+bool UpdateManager::DeleteEmptyDirectoryRecursive(const char *dirName)
+{
+	if(!HasPermission(dirName)) return false;
+
+	char	newPath[MAX_PATH];
+	char	drive[_MAX_DRIVE];
+	char	dir[MAX_PATH];
+	char	szWildCard[MAX_PATH];
+	
+	HANDLE	hSrch;
+	BOOL	bResult = TRUE;
+	WIN32_FIND_DATA	wfd;
+
+	if(strlen(dirName))
+		wsprintf(szWildCard, "%s\\*.*", dirName);
+	else
+		strcpy(szWildCard, "*.*");
+
+	_splitpath(szWildCard, drive, dir, NULL, NULL);
+
+	hSrch = FindFirstFile(szWildCard, &wfd);
+
+	while(bResult)
+	{
+		if(wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			if(wfd.cFileName[0] != '.')
+			{
+				wsprintf(newPath, "%s%s%s", drive, dir, wfd.cFileName);
+				
+				if(!DeleteEmptyDirectoryRecursive(newPath))
+				{
+					return false;
+				}
+			}
+		}
+
+		bResult = FindNextFile(hSrch, &wfd);
+	}
+
+	FindClose(hSrch);
+
+	char currentDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, currentDir);
+	wsprintf(newPath, "%s\\%s", currentDir, dir);
+	RemoveDirectory(newPath);
+
+	return true;
+}
+
+bool UpdateManager::CheckFileListVersion()
+{
+	// Version을 체크해다 에러가 나면 무조건 패치를 받아야한다.
+
+	std::string strWebFilePath	= m_strDownloadPath + "/" FILE_INFO_RECENT_FILE_LIST_VERSION;
+	std::string strDownFilePath	= m_strUpdateTempDir + "/" FILE_INFO_RECENT_FILE_LIST_VERSION;
+
+	BOOL bOpen = FALSE;
+
+	// UpdateStatus 파일을 다운 받는다.
+	if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+	{
+		return false;
+	}
+
+	// 최신 버전 파일을 잘 다운 받았는지 확인한다.
+	if(access(strDownFilePath.c_str(), 0))
+		return false;
+	
+	// 최신 버전 파일을 읽어온다.
+	FileCheckInfo recentVersion;
+
+	std::ifstream fileRecentVersion(strDownFilePath.c_str(), std::ios_base::binary);
+
+	if(!fileRecentVersion.is_open())
+	{
+		return false;
+	}
+
+	recentVersion.LoadFromFile(fileRecentVersion);
+	fileRecentVersion.close();
+
+	// 현재 클라이언트의 버전을 읽어온다.
+
+	FileCheckInfo myVersion;
+
+	std::ifstream fileMyVersion(FILE_INFO_FILE_LIST_VERSION, std::ios_base::binary);
+
+	if(!fileMyVersion.is_open())
+	{
+		return false;
+	}
+
+	myVersion.LoadFromFile(fileMyVersion);
+	fileMyVersion.close();
+	
+	return recentVersion.IsFileDataIdentical(myVersion);
+}
+
+/*bool UpdateManager::DownloadIpaddrFile()
+{
+	// Version을 체크해다 에러가 나면 무조건 패치를 받아야한다.
+
+	std::string strWebFilePath	= m_strRealIPDownloadPath + "/" FILE_INFO_REAL_WEBPATH;
+	std::string strDownFilePath	= "Update/"FILE_INFO_REAL_IPFILE;
+
+	BOOL bOpen = FALSE;
+
+	// UpdateStatus 파일을 다운 받는다.
+	if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+	{
+		return false;
+	}
+
+	// 최신 버전 파일을 잘 다운 받았는지 확인한다.
+	if(access(strDownFilePath.c_str(), 0))
+		return false;
+	
+	int intip;
+	std::ifstream ipFile(strDownFilePath.c_str(), std::ios_base::in);
+	ipFile >> intip;
+	
+	// 盧땡돕댔관匡숭櫓
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+
+	ovfstream ipaddrFile(FILE_INFO_REAL_IPFILE_INF, 0);
+	if(ipaddrFile.is_open())
+	{
+		ipaddrFile.write((char *)&intip, 4);
+		ipaddrFile.close();
+	}
+
+	iovfs_base::end_vfs();
+
+	return true;
+}
+
+*/
+bool UpdateManager::CheckGuildVersion()
+{
+	// 606번이 최신 포맷의 GuildVersion중 가장 오래된 파일이다.
+	/*
+	
+	m_nMyGuildVersion = 606;
+
+	/*/
+	std::ifstream fileMyVersion(FILE_INFO_GUILD_VERSION, std::ios_base::binary);
+
+	if(fileMyVersion.is_open())
+	{
+		fileMyVersion.read((char *)&m_nMyGuildVersion, sizeof(int));
+	}
+	else
+	{
+		m_nMyGuildVersion = 1;
+	}
+	
+	fileMyVersion.close();
+	//*/
+
+//	m_nMyGuildVersion = 1513;
+
+	char szGuildVersionBuf[MAX_PATH];
+
+	sprintf(szGuildVersionBuf, "/Guild%d.txt", m_nMyGuildVersion);
+
+	std::string strWebFilePath		= m_strGuildDownloadPath + "/version" + szGuildVersionBuf;
+	std::string strDownFilePath		= m_strUpdateTempDir + szGuildVersionBuf;
+
+	if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+	{
+		return true;
+	}
+
+	if(access(strDownFilePath.c_str(), 0))
+		return true;
+
+	const int bufferSize = 32;
+	char szRecentVersion[bufferSize];
+
+	std::ifstream fileRecentVersion(strDownFilePath.c_str());
+
+	if(fileRecentVersion.is_open())
+	{
+		fileRecentVersion.getline(szRecentVersion, bufferSize);
+	}
+
+	fileRecentVersion.close();
+
+	m_nRecentGuildVersion = atoi(szRecentVersion);
+
+	// 체크가 끝났다면 삭제
+	DeleteFile(strDownFilePath.c_str());
+
+	return m_nRecentGuildVersion <= m_nMyGuildVersion;
+}
+
+bool UpdateManager::CheckUpdateStatus()
+{
+//	return true;
+
+	std::string strWebFilePath = m_strDownloadPath + "/" + m_strUpdateStatus;
+	std::string strDownFilePath = m_strUpdateTempDir + "/" + m_strUpdateStatus;
+
+	std::string strWebFilePath2 = m_strDownloadPath2 + "/" + m_strUpdateStatus;
+
+	BOOL bOpen = FALSE;
+	BOOL bOpen2 = TRUE;
+	
+//20071210 - FullVersion Check
+#ifdef _INTERNATIONAL_VERSION_
+		int FullVersion;
+#endif
+	// UpdateStatus 파일을 다운 받는다.
+	if(DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+	{
+		Properties UpdateStatusInfo(strDownFilePath);
+		UpdateStatusInfo.load();
+
+		try
+		{
+			bOpen = UpdateStatusInfo.getPropertyInt("UpdateStatus");
+		}
+		catch (...)
+		{
+			bOpen = FALSE;
+		}
+//20071210 - FullVersion Data Load
+#ifdef _INTERNATIONAL_VERSION_
+		try
+		{
+			FullVersion = UpdateStatusInfo.getPropertyInt("FullVersion");
+		}
+		catch (...)
+		{
+			FullVersion = 0;
+		}
+#endif		
+	}
+	//////////폘땡구痰/////////////////
+	if(bOpen == FALSE && bOpen2 == TRUE)
+	{
+		if(DownloadFile(strWebFilePath2.c_str(), strDownFilePath.c_str()))
+		{
+			m_strDownloadPath = m_strDownloadPath2;
+			Properties UpdateStatusInfo(strDownFilePath);
+			UpdateStatusInfo.load();
+
+			try
+			{
+				bOpen = UpdateStatusInfo.getPropertyInt("UpdateStatus");
+			}
+			catch (...)
+			{
+				bOpen = FALSE;
+				bOpen2 = FALSE;
+			}	
+	#ifdef _INTERNATIONAL_VERSION_
+			try
+			{
+				FullVersion = UpdateStatusInfo.getPropertyInt("FullVersion");
+			}
+			catch (...)
+			{
+				FullVersion = 0;
+			}
+	#endif		
+		}
+	}
+	// 체크가 끝났다면 삭제
+	DeleteFile(strDownFilePath.c_str());
+
+//20071210 - 점검중 체크기능. 글로벌 서비스 및 넷마블에도 적용될 것이다. (1210 현재, 넷마블에는 Updater의 패치예정은 없다)
+	if (!bOpen)
+	{
+		_endthreadex(EXITCODE_NOWMAINTENANCE);
+		return bOpen != FALSE;
+	}
+
+#ifdef _INTERNATIONAL_VERSION_
+//20071210 - FullVersion Check기능 추가
+	if (FullVersion && g_iFullVersion)	//둘 모두 양수일 때만 유효하다.
+	{
+		if (FullVersion != g_iFullVersion)
+		{
+			_endthreadex(EXITCODE_NEEDNEWINSTALL);
+			return FALSE;
+		}
+	}
+#endif	
+
+	return bOpen != FALSE;
+}
+
+bool UpdateManager::DownloadRecentFileList()
+{
+	//////////////////////////////////////////////////////////////////////////
+	// Recent File List 다운로드
+	std::string strWebFilePath = m_strDownloadPath + "/" FILE_INFO_RECENT_FILE_LIST;
+	std::string strDownFilePath = m_strUpdateTempDir + "/" FILE_INFO_RECENT_FILE_LIST;
+
+	if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+	{
+		return false;
+	}
+
+	// 각각의 파일 정보를 읽어들인다.
+	m_RecentFiles.clear();
+	m_LocalFiles.clear();
+
+	if(!access(strDownFilePath.c_str(), 0) && !access(FILE_INFO_FILE_LIST, 0))
+	{
+		LoadCompressFileCheckInfoTable(m_RecentFiles, strDownFilePath.c_str());
+		LoadCompressFileCheckInfoTable(m_LocalFiles, FILE_INFO_FILE_LIST);
+	}
+
+	return true;
+}
+
+
+bool UpdateManager::GenerateUpdateFile()
+{
+	//////////////////////////////////////////////////////////////////////////
+	// Recent File List 다운로드
+	std::string strRecentFileList = m_strUpdateTempDir + "/" FILE_INFO_RECENT_FILE_LIST;
+
+	// 파일 정보가 둘다 있는지 확인한다.
+	if(access(strRecentFileList.c_str(), 0) || access(FILE_INFO_FILE_LIST, 0))
+		return false;
+
+
+	const FileCheckInfoTable &recentInfo = m_RecentFiles;
+	const FileCheckInfoTable &localInfo = m_LocalFiles;
+
+
+#ifdef _DEBUG
+	OutputDebugString("Start Generate Update File\n");
+#endif
+
+	FileCheckInfoTable::const_iterator localIter;
+	FileCheckInfoTable::const_iterator recentIter;
+
+
+	//////////////////////////////////////////////////////////////////////////
+	// 1. 삭제된 파일이 있는지 검색
+
+	localIter	= localInfo.begin();
+	recentIter	= recentInfo.begin();
+
+	while(localIter != localInfo.end())
+	{
+		const std::string& localFileName = localIter->first;
+		const FileCheckInfo& localFileCheckInfo = localIter->second;
+
+		FileCheckInfoTable::const_iterator findRecentIter = recentInfo.find(localFileName);
+
+		// 삭제된 놈이라면 삭제 리스트에 추가해준다.
+		if(findRecentIter == recentInfo.end())
+		{
+			m_DeletedFiles.insert(
+				std::make_pair(localFileName, localFileCheckInfo));
+
+#ifdef _DEBUG
+			char szBuf[MAX_PATH];
+			sprintf(szBuf, "Deleted File : %s\n", localFileName);
+			OutputDebugString(szBuf);
+#endif
+		}
+		
+		++localIter;
+		++recentIter;
+	}
+
+
+	//////////////////////////////////////////////////////////////////////////
+	// 2. 추가되거나 업데이트된 파일이 있는지 확인
+
+	localIter	= localInfo.begin();
+	recentIter	= recentInfo.begin();
+
+	while(recentIter != recentInfo.end())
+	{
+		const std::string& recentFileName = recentIter->first;
+		const FileCheckInfo& recentFileCheckInfo = recentIter->second;
+
+		FileCheckInfoTable::const_iterator findLocalIter = localInfo.find(recentFileName);
+
+
+		// 새로운 파일이라면 당연히 업데이트해야한다.
+		if(findLocalIter == localInfo.end())
+		{
+			m_UpdatedFiles.insert(
+				std::make_pair(recentFileName, recentFileCheckInfo));
+
+ #ifdef _DEBUG
+			char szBuf[MAX_PATH];
+			sprintf(szBuf, "Updated New File : %s\n", recentFileName);
+			OutputDebugString(szBuf);
+ #endif
+			
+		}
+		// 기존에 있던 파일이라면 몇가지 체크해본다.
+		else
+		{
+			const std::string& findLocalFileName = findLocalIter->first;
+			const FileCheckInfo& findLocalFileCheckInfo = findLocalIter->second;
+
+			// 데이터를 체크해서 뭔가 다른 파일이라면 업데이트 해야됨
+			if(!recentFileCheckInfo.IsFileDataIdentical(findLocalFileCheckInfo))
+			{
+				m_UpdatedFiles.insert(
+					std::make_pair(recentFileName, recentFileCheckInfo));
+
+ #ifdef _DEBUG
+ 				char szBuf[MAX_PATH];
+ 				sprintf(szBuf, "Updated File : %s\n", recentFileName);
+ 				OutputDebugString(szBuf);
+ #endif
+
+			}
+			// 데이터가 같은 파일이라면 혹시 패킹 타입이 다른지 확인해본다.
+			else
+			{
+				BYTE recentPackingType = recentFileCheckInfo.GetPackingType();
+				BYTE findLocalPackingType = findLocalFileCheckInfo.GetPackingType();
+
+				// 패킹 타입이 다르면 체크해둔다.
+				if(recentPackingType != findLocalPackingType)
+				{
+					m_PackingTypeChangedRecentFiles.insert(
+						std::make_pair(recentFileName, recentFileCheckInfo));
+
+					m_PackingTypeChangedLocalFiles.insert(
+						std::make_pair(findLocalFileName, findLocalFileCheckInfo));
+				}
+				
+#ifdef _DEBUG
+				char szBuf[MAX_PATH];
+				sprintf(szBuf, "Packing Type Changed File : %s\n", recentFileName);
+				OutputDebugString(szBuf);
+#endif
+
+			}
+		}
+		
+		
+		++localIter;
+		++recentIter;
+	}
+
+#ifdef _DEBUG
+	OutputDebugString("End Generate Update File\n");
+#endif
+
+	return true;
+}
+
+
+bool UpdateManager::CheckUpdaterPatch()
+{
+
+/*	FileCheckInfoTable::const_iterator findRecentIter = m_RecentFiles.begin();
+	bool fFindRecentFile = false;
+	while(findRecentIter != m_RecentFiles.end())
+	{
+		const std::string& localFileName = findRecentIter->first;
+		if (!strcmp (localFileName.c_str(), "updater.exe"))
+		{
+			fFindRecentFile = true;
+			break;
+		}
+		++findRecentIter;
+	}
+
+	FileCheckInfoTable::const_iterator findLocalIter = m_LocalFiles.begin();
+	bool fFindLocalFile = false;
+	while(findLocalIter != m_LocalFiles.end())
+	{
+		const std::string& localFileName = findRecentIter->first;
+		if (!strcmp (localFileName.c_str(), "updater.exe"))
+		{
+			fFindLocalFile = true;
+			break;
+		}
+		++findLocalIter;
+	}
+	if (fFindLocalFile && fFindRecentFile)*/
+	// 각각의 FileCheckInfoTable에서 Updater를 찾는다.
+	FileCheckInfoTable::const_iterator findRecentIter = m_RecentFiles.find(UPDATER_FILENAME);
+	FileCheckInfoTable::const_iterator findLocalIter = m_LocalFiles.find(UPDATER_FILENAME);
+
+	if(findRecentIter != m_RecentFiles.end() &&
+	   findLocalIter != m_LocalFiles.end())
+	{
+		const FileCheckInfo& findRecentFileCheckInfo = findRecentIter->second;
+		const FileCheckInfo& findLocalFileCheckInfo = findLocalIter->second;
+
+		// Updater가 바뀌었는지 확인
+		if(!findRecentFileCheckInfo.IsFileDataIdentical(findLocalFileCheckInfo))
+		{
+			// 새로운 Updater를 다운로드 받는다.
+			std::string strUpdateFilePath	= UPDATER_FILENAME;
+			strUpdateFilePath += PATCH_DATA_EXT;
+			
+			std::string strWebFilePath		= m_strDownloadPath + "/" + strUpdateFilePath;
+			std::string strDownFilePath		= m_strUpdateTempDir + "/" + strUpdateFilePath;
+			
+			if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+			{
+				return false;
+			}
+
+
+			RealData newUpdater;
+
+			if(!newUpdater.Create(strDownFilePath.c_str(),
+				(int)hash_func_path_string_stlport()(UPDATER_FILENAME)))
+			{
+				return false;
+			}
+
+			std::ofstream fileNewUpdater(UPDATER_NEW_FILENAME, std::ios_base::binary);
+			fileNewUpdater.write((const char *)newUpdater.m_pData, newUpdater.m_nSize);
+			fileNewUpdater.close();
+
+			newUpdater.Destory();
+
+			// 파일이 생성됐는지 확인			
+			if(access(UPDATER_NEW_FILENAME, 0))
+			{
+//				ShowErrorMessage("업데이트 패치를 하던중 오류가 발생하였습니다.", UPDATER_NEW_FILENAME);
+				ShowErrorMessage(_STR_ERROR_DOWNLOADINGUPDATER_, UPDATER_NEW_FILENAME);
+				return false;
+			}
+
+			// 새로운 Updater FileCheckInfo를 복사후 저장
+			m_LocalFiles[UPDATER_FILENAME] = findRecentFileCheckInfo;
+
+			SaveCompressFileCheckInfoTable(m_LocalFiles, FILE_INFO_FILE_LIST);
+
+			// 새로운 Version 저장
+			FileCheckInfo FileListVersion(FILE_INFO_FILE_LIST);
+
+			std::ofstream fileVersion(FILE_INFO_FILE_LIST_VERSION, std::ios_base::binary);
+
+			// 파일이름은 안 넣어도 되는데 과거 Updater와의 호환성을 위해 ㅠ _ㅠ
+			int nameLength = static_cast<int>(strlen(FILE_INFO_FILE_LIST_VERSION));
+			fileVersion.write((const char *)&nameLength, sizeof(int));
+			fileVersion.write((const char *)FILE_INFO_FILE_LIST_VERSION, nameLength);
+
+			FileListVersion.SaveToFile(fileVersion);
+			fileVersion.close();
+
+			// thread를 종료한다.
+			_endthreadex(EXITCODE_UPDATER_PATCH);
+
+			return false;
+		}
+	}
+	return true;
+};
+
+
+bool UpdateManager::CheckDiskFreeSpace()
+{
+	// 업데이트 용량을 확인한다.
+	__int64 totalUpdateSize = 0;
+
+	FileCheckInfoTable::const_iterator updatedFilesIter = m_UpdatedFiles.begin();
+	
+	for(; updatedFilesIter != m_UpdatedFiles.end(); ++updatedFilesIter)
+	{
+		const FileCheckInfo& updateFileCheckInfo = updatedFilesIter->second;
+
+		totalUpdateSize += updateFileCheckInfo.GetFileSize();
+	}
+
+	// 업데이트 말고 기타 파일들도 있으니 5MB 정도는 여유로 잡아주자
+	totalUpdateSize += 5 * 1024 * 1024;
+
+	// 하드 디스크 남은 용량을 가져온다.
+	DWORD dwSectorsPerCluster;
+	DWORD dwBytesPerSector;
+	DWORD dwNumberOfFreeClusters;
+	DWORD dwTotalNumberOfClusters;
+
+	GetDiskFreeSpace(NULL,	// current drive
+					&dwSectorsPerCluster, 
+					&dwBytesPerSector, 
+					&dwNumberOfFreeClusters, 
+					&dwTotalNumberOfClusters);
+
+	DWORD bytesPerCluster = dwSectorsPerCluster * dwBytesPerSector;
+	__int64 freeBytes = (__int64)dwNumberOfFreeClusters * (__int64)bytesPerCluster;
+
+	// 압축해서 패치하기 때문에 2배 이상 크면된다.
+	if (freeBytes < totalUpdateSize * 2)
+	{
+//		ShowErrorMessage(
+//			"디스크 용량이 부족합니다.\n\n"
+//			"용량을 확보한뒤 다시 시도해주세요.");
+		ShowErrorMessage(_STR_ERROR_NOTENOUGHFREEDISK_);
+		return false;
+	}
+
+	return true;
+}
+
+
+bool UpdateManager::DownloadUpdatedFiles()
+{
+	//FileCheckInfoTable failedCheckInfoTable;
+	
+#ifdef USE_PROGRESS
+	/*
+	// 전체 다운받을 크기를 계산해 ProgressBar에 세팅한다.
+	DWORD fileSizeTotal = 0;
+	
+	  updatedFilesIter = m_UpdatedFiles.begin();
+	  
+		for(; updatedFilesIter != m_UpdatedFiles.end(); ++updatedFilesIter)
+		{
+		fileSizeTotal += updatedFilesIter->GetFileSize();
+		}
+		
+		  g_ProgressTotal.SetRange32(0, fileSizeTotal);
+	*/
+	
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+	
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange32(0, m_UpdatedFiles.size());
+#endif
+
+	// 순차적인 다운로드에 생기는 부하를 줄이기위해 랜덤으로 다운로드 순서를 정해준다.
+	FILECHECKINFO_VEC RandomUpdatedFiles(m_UpdatedFiles.begin(), m_UpdatedFiles.end());
+
+	std::random_shuffle(RandomUpdatedFiles.begin(), RandomUpdatedFiles.end());
+
+	//////////////////////////////////////////////////////////////////////////
+	// 파일 다운로드
+	
+	FILECHECKINFO_VEC::const_iterator updatedFilesIter = RandomUpdatedFiles.begin();
+	
+	for(; updatedFilesIter != RandomUpdatedFiles.end(); ++updatedFilesIter)
+	{
+		const std::string& updateFileName = updatedFilesIter->first;
+		const FileCheckInfo& updateFileCheckInfo = updatedFilesIter->second;
+
+		std::string strUpdateFilePath	= updateFileName;
+		strUpdateFilePath += PATCH_DATA_EXT;
+		
+		std::string strWebFilePath		= m_strDownloadPath + "/" + strUpdateFilePath;
+		std::string strDownFilePath		= m_strUpdateTempDir + "/" + strUpdateFilePath;
+
+		bool bNeedDownload = true;
+
+		// 파일이 있다면 맞는 파일인지 확인
+		if(!access(strDownFilePath.c_str(), 0))
+		{
+			RealData realData;
+
+			if(realData.Create(strDownFilePath.c_str(),
+				(int)hash_func_path_string_stlport()(updateFileName)))
+			{
+				// 일단 파일 크기가 같아야 한다.
+				if(realData.m_nSize == updateFileCheckInfo.GetFileSize())
+				{
+					// md5를 체크해본다.
+					std::string md5 = CMD5Checksum::GetMD5((BYTE*)realData.m_pData, realData.m_nSize);
+			
+					if(!memcmp(md5.c_str(), updateFileCheckInfo.GetMD5CheckSum(), FileCheckInfo::CHECKSUM_SIZE))
+					{
+						bNeedDownload = false;
+					}
+				}
+			}
+		}
+		
+		// 파일이 없다면 다운로드
+
+		if(bNeedDownload &&
+		   !DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+		{
+//			ShowErrorMessage("패치를 다운로드하던 중 오류가 발생하였습니다.",
+			ShowErrorMessage(_STR_ERROR_DOWNLOADPATCHFILES_,
+#ifdef _DEBUG	
+				strWebFilePath.c_str(),
+#endif	
+				strDownFilePath.c_str());
+			return false;
+		}
+
+		
+#ifdef USE_PROGRESS
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+#endif
+	}
+	
+	return true;
+}
+
+
+bool UpdateManager::GenerateRecentGuildID()
+{
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+	
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange32(0, m_nRecentGuildVersion - m_nMyGuildVersion);
+#endif
+
+	int guildVersion = m_nMyGuildVersion;
+
+	char szVersionFileName[MAX_PATH];
+
+	for(; guildVersion < m_nRecentGuildVersion; ++guildVersion)
+	{
+		sprintf(szVersionFileName, "/Guild%d.txt", guildVersion);
+
+		std::string strWebFilePath		= m_strGuildDownloadPath + "/version" + szVersionFileName;
+		std::string strDownFilePath		= m_strUpdateTempDir + szVersionFileName;
+
+		//////////////////////////////////////////////////////////////////////////
+		// GuildVersion Download
+		if(DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+		{
+			const bufferSize = 128;
+			char szGuildIDBuf[bufferSize];
+
+			std::ifstream fileVersion(strDownFilePath.c_str());
+			
+			// 첫줄은 버전이다.
+			fileVersion.getline(szGuildIDBuf, bufferSize);
+	
+			int recentVersion = atoi(szGuildIDBuf);
+
+			if(recentVersion != m_nRecentGuildVersion)
+			{
+//				ShowErrorMessage("길드마크 버전이 다른 파일입니다.",
+				ShowErrorMessage(_STR_DIFFERENTGUILDMARKVERSION_,
+#ifdef _DEBUG
+					strWebFilePath.c_str(),
+#endif
+					strDownFilePath.c_str());
+				return false;
+			}
+		
+			while(fileVersion.getline(szGuildIDBuf, bufferSize))
+			{
+				int guildID = atoi(szGuildIDBuf);
+				m_GuildMarkIDSet.insert(guildID);
+			}
+
+			fileVersion.close();
+
+			// 체크가 끝난 파일은 삭제
+			//DeleteFile(strDownFilePath.c_str());
+		}
+		else
+		{
+//			ShowErrorMessage("길드마크 버전를 다운로드하던중 오류가 발생하였습니다.",
+			ShowErrorMessage(_STR_ERROR_DONWLOADGUILDMARKVERSION_,
+#ifdef _DEBUG
+					strWebFilePath.c_str(),
+#endif
+					strDownFilePath.c_str());
+			return false;
+		}
+
+#ifdef USE_PROGRESS
+		g_ProgressTotal.OffsetPos(1);	
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+#endif
+	}
+
+	return true;
+}
+
+
+bool UpdateManager::DownloadRecentGuildMark()
+{
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange(0, m_GuildMarkIDSet.size());
+#endif
+
+	char szGuildMarkFileName[MAX_PATH];
+
+	INT_SET::const_iterator pos = m_GuildMarkIDSet.begin();
+
+	for(; pos != m_GuildMarkIDSet.end(); ++pos)
+	{
+		sprintf(szGuildMarkFileName, "/%d.jpg", *pos);
+
+		std::string strWebFilePath		= m_strGuildDownloadPath + "/guildImages" + szGuildMarkFileName;
+		std::string strDownFilePath		= m_strUpdateTempDir + szGuildMarkFileName;
+
+		//////////////////////////////////////////////////////////////////////////
+		// GuildVersion Download
+		if(!DownloadFile(strWebFilePath.c_str(), strDownFilePath.c_str()))
+		{
+//			ShowErrorMessage("길드마크 이미지를 다운로드하던중 오류가 발생하였습니다.",
+			ShowErrorMessage(_STR_ERROR_DOWNLOADGUILDMARKIMAGE_,
+#ifdef _DEBUG	
+					strWebFilePath.c_str(),
+#endif
+					strDownFilePath.c_str());
+			return false;
+		}
+
+#ifdef USE_PROGRESS
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+#endif
+	}
+
+	return true;
+}
+
+
+bool UpdateManager::ApplyDeletedFiles()
+{
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+
+	LPVFSYSTEM pVFSystem = iovfs_base::get_vfs();
+
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+
+//	#ifdef __USE_NOWCDN__
+//	g_Progress.SetRangeUnitC ();
+//	g_Progress.SetPos(0);
+//	g_Progress.SetRange(0, m_DeletedFiles.size());
+//	#else
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange(0, m_DeletedFiles.size());
+//	#endif
+#endif
+
+	FileCheckInfoTable::const_iterator pos = m_DeletedFiles.begin();
+
+	for(; pos != m_DeletedFiles.end(); ++pos)
+	{
+		const std::string& deleteFileName = pos->first;
+		const FileCheckInfo& deleteFileCheckInfo = pos->second;
+
+		// Packing Type에 따라 삭제 방법이 다르다
+		if(deleteFileCheckInfo.GetPackingType() == PT_NO_PACKING)
+		{
+			DeleteFile(deleteFileName.c_str());
+		}
+		else
+		{
+			pVFSystem->DeleteFile(deleteFileName.c_str());
+		}
+
+#ifdef USE_PROGRESS
+//	#ifdef __USE_NOWCDN__
+//		g_Progress.OffsetPos(1);
+//		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#else
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#endif
+#endif
+	}
+
+	iovfs_base::end_vfs();
+
+	return true;
+}
+
+
+bool UpdateManager::ApplyUpdatedFiles()
+{
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+
+//	#ifdef __USE_NOWCDN__
+//	g_Progress.SetRangeUnitC ();
+//	g_Progress.SetPos(0);
+//	g_Progress.SetRange(0, m_UpdatedFiles.size());
+//	#else
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange(0, m_UpdatedFiles.size());
+//	#endif
+#endif
+
+	// VFS ㄱㄱ
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+	
+	LPVFSYSTEM pVFSystem = iovfs_base::get_vfs();
+
+	FileCheckInfoTable::iterator pos = m_UpdatedFiles.begin();
+
+	for(; pos != m_UpdatedFiles.end(); ++pos)
+	{
+		const std::string& updateFileName = pos->first;
+		const FileCheckInfo& updateFileCheckInfo = pos->second;
+
+		LPCTSTR fileName = updateFileName.c_str();
+
+		std::string strUpdateFileName = m_strUpdateTempDir + "/";
+		strUpdateFileName += fileName;
+		strUpdateFileName += PATCH_DATA_EXT;
+
+		RealData updateFileData;
+
+		if(!updateFileData.Create(strUpdateFileName.c_str(),
+			(int)hash_func_path_string_stlport()(fileName)))
+		{
+//			ShowErrorMessage("패치 파일의 압축을 해제할 수 없습니다.",
+			ShowErrorMessage(_STR_ERROR_UNCOMPRESSFILE_,
+				fileName, strUpdateFileName.c_str());
+			return false;
+		}
+
+		bool bFileCheckOK = false;
+
+		// 패치에 앞서 맞는 파일인지 체크해본다.
+		if(updateFileData.m_nSize == updateFileCheckInfo.GetFileSize())
+		{
+			// md5를 체크해본다.
+			std::string md5 = CMD5Checksum::GetMD5((BYTE*)updateFileData.m_pData, updateFileData.m_nSize);
+			
+			if(!memcmp(md5.c_str(), updateFileCheckInfo.GetMD5CheckSum(), FileCheckInfo::CHECKSUM_SIZE))
+			{
+				bFileCheckOK = true;
+			}
+		}
+
+		if(!bFileCheckOK)
+		{
+//			ShowErrorMessage("패치 파일이 손상되었습니다.",
+			ShowErrorMessage(_STR_ERROR_DAMAGEDPATCHFILE_,
+				fileName, strUpdateFileName.c_str());
+			DeleteFile(strUpdateFileName.c_str());
+			return false;
+		}
+		
+		int fileOption = std::ios_base::binary;
+
+		// Packing Type에 따라 처리해준다.
+		BYTE packingType = updateFileCheckInfo.GetPackingType();
+
+		if(packingType == PT_NO_PACKING)
+		{
+			FullPathBuild(fileName);
+		}	
+		else
+		{
+			fileOption |= iovs_ex::virtualfile;
+
+			if(packingType == PT_COMPRESS_PACKING)
+			{
+				fileOption |= iovs_ex::compress;
+			}
+		}
+
+		// 기존에 파일이 있다면 삭제한다.
+		if(pVFSystem->IsFileExist(fileName))
+		{
+			// 실제 파일을 삭제
+			DeleteFile(fileName);
+			
+			// 패키지 파일을 삭제
+			pVFSystem->DeleteFile(fileName);
+		}
+
+		// 압축 풀린 파일을 기록한다.
+		ovfstream fileUpdate(fileName, fileOption);
+
+		if(!fileUpdate.is_open())
+		{
+//			ShowErrorMessage("패치 파일을 복사할 수 없습니다.",
+			ShowErrorMessage(_STR_ERROR_CANNOTCOPYPATCHFILE_,
+				fileName, strUpdateFileName.c_str());
+			return false;
+		}
+
+		fileUpdate.write((const char *)updateFileData.m_pData, updateFileData.m_nSize);
+		fileUpdate.close();
+
+		updateFileData.Destory();
+
+#ifdef USE_PROGRESS
+//	#ifdef __USE_NOWCDN__
+//		g_Progress.OffsetPos(1);
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#else
+//		g_ProgressTotal.OffsetPos(1);
+//		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#endif
+#endif	
+	}
+
+	iovfs_base::end_vfs();
+
+	return true;
+}
+
+
+bool UpdateManager::ApplyPackingTypeChangedFiles()
+{
+	// 두 리스트의 크기는 반드시 같아야한다.
+	if(m_PackingTypeChangedLocalFiles.size()
+		!= m_PackingTypeChangedRecentFiles.size())
+	{
+		Assert("UpdateManager::ApplyPackingTypeChangedFiles() : List Error" && FALSE);
+
+		char szChangeLocal[128];
+		char szChangeRecent[128];
+
+		sprintf(szChangeLocal, "LocalFiles: %d", m_PackingTypeChangedLocalFiles.size());
+		sprintf(szChangeRecent, "RecentFiles: %d", m_PackingTypeChangedRecentFiles.size());
+
+//		ShowErrorMessage("리스트의 크기가 다릅니다.", szChangeLocal, szChangeRecent);
+		ShowErrorMessage(_STR_ERROR_DIFFERLISTSIZE_, szChangeLocal, szChangeRecent);
+		return false;
+	}
+
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+
+//	#ifdef __USE_NOWCDN__
+//	g_Progress.SetRangeUnitC ();
+//	g_Progress.SetPos(0);
+//	g_Progress.SetRange(0, m_PackingTypeChangedLocalFiles.size());
+//	#else
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange(0, m_PackingTypeChangedLocalFiles.size());
+//	#endif
+#endif
+
+	// VFS ㄱㄱ
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+	
+	LPVFSYSTEM pVFSystem = iovfs_base::get_vfs();
+
+	
+	FileCheckInfoTable::const_iterator recentIter	= m_PackingTypeChangedRecentFiles.begin();
+	FileCheckInfoTable::const_iterator localIter	= m_PackingTypeChangedLocalFiles.begin();
+
+	while(recentIter != m_PackingTypeChangedRecentFiles.end() ||
+		localIter != m_PackingTypeChangedLocalFiles.end())
+	{
+		const std::string& recentFileName = recentIter->first;
+		const FileCheckInfo& recentFileCheckInfo = recentIter->second;
+
+		const std::string& localFileName = localIter->first;
+		const FileCheckInfo& localFileCheckInfo = localIter->second;
+
+		// 두 리스트의 파일 이름은 반드시 같아야한다.
+		Assert("localIter->GetFileName() == recentIter->GetFileName()" && localFileName == recentFileName);
+
+		LPCTSTR fileName = localFileName.c_str();
+
+		// 파일이 없다면 뭔가 이상하다.
+		if(!pVFSystem->IsFileExist(fileName))
+		{
+//			ShowErrorMessage("패키지 타입이 다른 파일의 원본 파일이 없습니다.", fileName);
+			ShowErrorMessage(_STR_ERROR_PACKAGETYPE1_, fileName);
+			return false;
+		}
+
+		BYTE recentPackingType	= recentFileCheckInfo.GetPackingType();
+		BYTE localPackingType	= localFileCheckInfo.GetPackingType();
+
+		DWORD recentFileSize	= recentFileCheckInfo.GetFileSize();
+		DWORD localFileSize		= localFileCheckInfo.GetFileSize();
+
+		// 다른 정보는 다 같고 패킹 타입만 틀려야한다.
+		if(recentPackingType != localPackingType &&
+			recentFileSize == localFileSize)
+		{
+			// 내가 가지고 있던 파일을 읽어들인다.
+			int localFileOption = std::ios_base::binary;
+
+			if(localPackingType != PT_NO_PACKING)
+			{
+				localFileOption |= iovs_ex::virtualfile;
+
+				if(localPackingType == PT_COMPRESS_PACKING)
+				{
+					localFileOption |= iovs_ex::compress;
+				}
+			}
+
+			char *pBuffer = new char[localFileSize];
+
+			ivfstream localFile(fileName, localFileOption);
+			if(!localFile.is_open())
+			{
+				ShowErrorMessage(
+					_STR_ERROR_PACKAGETYPE2_, fileName);
+//					"패키지 타입이 다른 파일의 원본 파일을 열 수 없습니다.", fileName);
+				delete [] pBuffer;
+				return false;
+			}
+
+			localFile.read(pBuffer, localFileSize);
+			
+			if(static_cast<DWORD>(localFile.gcount()) != localFileSize)
+			{
+				ShowErrorMessage(
+					_STR_ERROR_PACKAGETYPE3_, fileName);
+//					"패키지 타입이 다른 파일의 원본 파일을 읽던 중 오류가 발생하였습니다.", fileName);
+				delete [] pBuffer;
+				return false;
+			}
+			
+			localFile.close();
+
+			// 새로운 패킹 타입에 맞게 복사한다.
+			int recentFileOption = std::ios_base::binary;
+
+			if(recentPackingType != PT_NO_PACKING)
+			{
+				recentFileOption |= iovs_ex::virtualfile;
+
+				if(recentPackingType == PT_COMPRESS_PACKING)
+				{
+					recentFileOption |= iovs_ex::compress;
+				}
+			}
+			
+
+			if(!FullPathBuild(fileName))
+			{
+//				ShowErrorMessage("패키지 타입이 바뀐 파일을 출력할 디렉토리를 생성할 수 없습니다.", fileName);
+				ShowErrorMessage(_STR_ERROR_PACKAGETYPE4_, fileName);
+				return false;
+			}
+
+			ovfstream recentFile(fileName, recentFileOption);
+			
+			if(!recentFile.is_open())
+			{
+//				ShowErrorMessage("패키지 타입이 바뀐 파일을 출력 수 없습니다.", fileName);
+				ShowErrorMessage(_STR_ERROR_PACKAGETYPE5_, fileName);
+				return false;
+			}
+
+			recentFile.write(pBuffer, recentFileSize);
+			recentFile.close();
+
+			delete [] pBuffer;
+
+			// 로컬 파일은 삭제한다.
+			if(localPackingType == PT_NO_PACKING)
+			{
+				DeleteFile(fileName);
+			}
+			else
+			{
+				pVFSystem->DeleteFile(fileName);
+			}
+		}
+		else
+		{
+//			ShowErrorMessage("패키지 타입이 다른 파일의 내용이 다릅니다.", fileName);
+			ShowErrorMessage(_STR_ERROR_PACKAGETYPE6_, fileName);
+			return false;
+		}
+
+		++recentIter;
+		++localIter;
+
+#ifdef USE_PROGRESS
+//	#ifdef __USE_NOWCDN__
+//		g_Progress.OffsetPos(1);
+//		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#else
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+//	#endif
+#endif	
+	}
+
+
+	iovfs_base::end_vfs();
+
+	return true;
+}
+
+
+bool UpdateManager::ApplyGuildMark()
+{
+#ifdef USE_PROGRESS
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+
+	g_ProgressTotal.SetPos(0);
+	g_ProgressTotal.SetRange(0, m_GuildMarkIDSet.size());
+#endif
+
+	// VFS ㄱㄱ
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+
+	LPVFSYSTEM pVFSystem = iovfs_base::get_vfs();
+
+	// 원래 길드마크 이미지가 몇개였는지 확인
+	const int bufferSize = 32;
+	char szGetLineBuf[bufferSize];
+	
+	LPCTSTR szFileGuildMarkHeaderName = FILE_INFO_GUILDMARK_SPK "/header.inf";
+
+	int guildMarkImageSize = 8;
+
+	// 버전 1번이면 처음부터 다시 받는다는 소리다
+	if(m_nMyGuildVersion > 1)
+	{
+		ivfstream fileGuildMarkHeader(szFileGuildMarkHeaderName, 0);
+		
+		if(fileGuildMarkHeader.is_open())
+		{
+			fileGuildMarkHeader.getline(szGetLineBuf, bufferSize);
+			guildMarkImageSize = atoi(szGetLineBuf);
+		}
+
+		fileGuildMarkHeader.close();
+	}	
+
+	// 기존 길드 마크의 정보를 파일에서 로드
+	MGuildInfoMapper guildInfoMap;
+	
+	ivfstream fileGuildInfoMap(FILE_INFO_GUILDMARK_INFO, std::ios_base::binary);
+	
+	if(fileGuildInfoMap.is_open())
+	{
+		guildInfoMap.LoadFromFile(fileGuildInfoMap);
+	}
+	
+	fileGuildInfoMap.close();
+	
+	CDirectDraw::Init(NULL, 1, 1, CDirectDraw::WINDOWMODE, false);
+
+	INT_SET::iterator pos = m_GuildMarkIDSet.begin();
+	
+	for(; pos != m_GuildMarkIDSet.end(); ++pos)
+	{
+		int guildID = *pos;
+
+		char szGuildMarkImage[MAX_PATH];
+		sprintf(szGuildMarkImage, "%s/%d.jpg", m_strUpdateTempDir.c_str(), guildID);
+
+		CSprite *pSprite = NULL, *pSpriteSmall = NULL;
+
+		if(MGuildMarkManager::CreateGuildMark(szGuildMarkImage, pSprite, pSpriteSmall))
+		{
+			GUILD_INFO	*guildInfo = guildInfoMap.Get(guildID);
+
+			GUILD_INFO	*pNewInfo = NULL;
+			int			nNewGuildMark = -1;
+
+			// 기존에 있던 길드라면
+			if(guildInfo)
+			{
+				pNewInfo = guildInfo;
+				nNewGuildMark = guildInfo->GetSpriteID();
+			}
+			else
+			{
+				pNewInfo = new GUILD_INFO;
+				guildInfoMap.Set(guildID, pNewInfo);
+				
+				nNewGuildMark = guildMarkImageSize;
+				guildMarkImageSize += 2;
+			}
+
+			if(!pNewInfo)
+			{
+//				ShowErrorMessage("길드 마크 정보를 생성하던중 오류가 발생하였습니다.", szGuildMarkImage);
+				ShowErrorMessage(_STR_ERROR_MAKEGUILDMARKINFO_, szGuildMarkImage);
+				return false;
+			}
+
+			if(nNewGuildMark < 0)
+			{
+//				ShowErrorMessage("길드 마크 번호가 0보다 작습니다.", szGuildMarkImage);
+				ShowErrorMessage(_STR_ERROR_GUILDMARKID_, szGuildMarkImage);
+				return false;	
+			}
+			
+
+			pNewInfo->SetSpriteID(nNewGuildMark);
+
+			// 일단 일반 파일로 하나 만들어 둔다.
+			
+			WORD sizeTwo = 2;
+
+			// 큰 놈 생성
+			std::string strTempGuildMark = m_strUpdateTempDir + "/$GuildMark.spk";
+
+			std::ofstream fileTempGuildMark(strTempGuildMark.c_str(), std::ios_base::binary);
+			fileTempGuildMark.write((const char *)&sizeTwo, 2);
+			pSprite->SaveToFile(fileTempGuildMark);
+			pSpriteSmall->SaveToFile(fileTempGuildMark);
+			fileTempGuildMark.close();
+
+			char szNewGuildMarkImage[MAX_PATH];
+
+			// 큰 놈 복사
+			sprintf(szNewGuildMarkImage, FILE_INFO_GUILDMARK_SPK "/%05d.spk", nNewGuildMark);
+
+#ifdef _DEBUG
+			FullPathBuild(szNewGuildMarkImage);
+			CopyFile(strTempGuildMark.c_str(), szNewGuildMarkImage, FALSE);
+#else
+			std::ifstream fileGuildMarkTemp(strTempGuildMark.c_str(), std::ios_base::binary);
+			fileGuildMarkTemp.seekg(0, std::ios_base::end);
+			DWORD fileSize = static_cast<int>(fileGuildMarkTemp.tellg());
+			fileGuildMarkTemp.seekg(0, std::ios_base::beg);
+			
+			char *pBuffer = new char[fileSize];
+
+			fileGuildMarkTemp.read(pBuffer, fileSize);
+			fileGuildMarkTemp.close();
+
+			ovfstream vfileGuildMark(szNewGuildMarkImage,
+				std::ios_base::binary | iovs_ex::virtualfile | iovs_ex::compress);
+			vfileGuildMark.write(pBuffer, fileSize);	
+			vfileGuildMark.close();
+
+			delete [] pBuffer;
+
+			//pVFSystem->AddFileRename(strTempGuildMark.c_str(), szNewGuildMarkImage, true);
+#endif
+
+			// 복사 했으면 삭제하고 끝
+			DeleteFile(strTempGuildMark.c_str());
+		}
+		else
+		{
+//			Assert("UpdateManager::ApplyGuildMark() : CreateGuildMark Error" && FALSE);
+
+#ifdef _DEBUG
+			char szBuf[MAX_PATH];
+			sprintf(szBuf, "CreateGuildMark Error : %s\n", szGuildMarkImage);
+			OutputDebugString(szBuf);
+#endif
+		}
+
+		// Sprite 삭제해주시고~
+		delete pSprite;
+		delete pSpriteSmall;
+
+#ifdef USE_PROGRESS
+		g_ProgressTotal.OffsetPos(1);
+		InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+#endif
+	}
+
+	CDirectDraw::ReleaseAll();
+
+	// 늘어난 파일 크기를 헤더에 기록해준다.
+	std::string strTempGuildMarkHeader = m_strUpdateTempDir + "/$GuildMarkHeader.inf";
+
+	std::ofstream fileTempHeader(strTempGuildMarkHeader.c_str(), 0);
+	fileTempHeader << guildMarkImageSize << '\n';	// spk count
+	fileTempHeader << "2\n";						// spk split size
+	fileTempHeader.close();
+
+#ifdef _DEBUG
+	FullPathBuild(szFileGuildMarkHeaderName);
+	CopyFile(strTempGuildMarkHeader.c_str(), szFileGuildMarkHeaderName, FALSE);
+#else
+
+	std::ifstream fileGuildMarkHeaderTemp(strTempGuildMarkHeader.c_str(), std::ios_base::binary);
+	fileGuildMarkHeaderTemp.seekg(0, std::ios_base::end);
+	DWORD fileSize = static_cast<int>(fileGuildMarkHeaderTemp.tellg());
+	fileGuildMarkHeaderTemp.seekg(0, std::ios_base::beg);
+	
+	char *pBuffer = new char[fileSize];
+	
+	fileGuildMarkHeaderTemp.read(pBuffer, fileSize);
+	fileGuildMarkHeaderTemp.close();
+	
+	ovfstream vfileGuildMarkHeader(szFileGuildMarkHeaderName,
+		std::ios_base::binary | iovs_ex::virtualfile | iovs_ex::compress);
+	vfileGuildMarkHeader.write(pBuffer, fileSize);	
+	vfileGuildMarkHeader.close();
+	
+	delete [] pBuffer;
+
+
+	//pVFSystem->AddFileRename(strTempGuildMarkHeader.c_str(), szFileGuildMarkHeaderName, true);
+#endif
+
+	DeleteFile(strTempGuildMarkHeader.c_str());
+
+
+	// 업데이트된 길드 마크 정보를 기록한다.
+	std::ofstream fileGuildMarkInfo(FILE_INFO_GUILDMARK_INFO, std::ios_base::binary);
+	guildInfoMap.SaveToFile(fileGuildMarkInfo);
+	fileGuildMarkInfo.close();
+
+	// 업데이트된 길드 버전 정보를 기록한다.
+	std::ofstream fileGuildVersion(FILE_INFO_GUILD_VERSION, std::ios_base::binary);
+	fileGuildVersion.write((const char *)&m_nRecentGuildVersion, sizeof(int));
+	fileGuildVersion.close();
+
+	iovfs_base::end_vfs();
+
+	return true;
+}
+
+
+bool UpdateManager::ApplyFileList()
+{
+	std::string strRecentFileListPath			= m_strUpdateTempDir + "/" FILE_INFO_RECENT_FILE_LIST;
+	std::string strRecentFileListVersionPath	= m_strUpdateTempDir + "/" FILE_INFO_RECENT_FILE_LIST_VERSION;
+
+	// 파일이 둘다 있을 때만
+	if(!access(strRecentFileListPath.c_str(), 0) && !access(strRecentFileListVersionPath.c_str(), 0))
+	{
+		CopyFile(strRecentFileListPath.c_str(),			FILE_INFO_FILE_LIST, FALSE);
+		CopyFile(strRecentFileListVersionPath.c_str(),	FILE_INFO_FILE_LIST_VERSION, FALSE);
+	}
+
+	return true;
+}
+
+
+bool UpdateManager::ClearTemporaryFile()
+{
+	DeleteDirectory(m_strUpdateTempDir.c_str());
+	DeleteEmptyDirectoryRecursive("");
+	return true;
+}
+
+
+void UpdateManager::ShowErrorMessage(LPCTSTR errorMessage, LPCSTR param1, LPCSTR param2)
+{
+	char szBuf[256];
+	strcpy(szBuf, errorMessage);
+
+	if(param1)
+	{
+		strcat(szBuf, "\n\n");
+		strcat(szBuf, param1);
+	}
+
+	if(param2)
+	{
+		strcat(szBuf, "\n\n");
+		strcat(szBuf, param2);
+	}
+	
+	MessageBox(g_hWnd, szBuf, "Darkeden Updater Error", MB_OK | MB_ICONERROR);
+}

@@ -1,0 +1,2126 @@
+// NewUpdater2Dlg.cpp : implementation file
+//
+
+
+#include "stdafx.h"
+#include "GameUpdater.h"
+#include "GameUpdaterDlg.h"
+
+#include "ProgressST.h"
+#include "CMessageArray.h"
+#include "Properties.h"
+#include "Updater.h"
+#include "MZLib/MZlib.h"
+
+#include "UpdateManagerThread.h"
+
+//zzi
+#include "UpdaterVersionControl.h"
+#include "GameUpdaterStringInfo.h"
+//-
+
+#ifdef __TEST_CODE__
+	#include "UCUpdateList.h"
+#endif
+//#include "DebugInfo.h"
+
+
+// WebServer¸¦ ÅëÇØ¼­ ´Ù¿îÀ» ¹Þ´Â´Ù.
+HRESULT InitFail(HWND hWnd, LPCTSTR szError,...);
+extern std::string GetSeperator(int num);
+LONG	InitSocketThreadProc(LPVOID lpParameter);
+
+BOOL			g_bHttpPatch = TRUE;
+CProgressST		g_Progress;
+CProgressST		g_ProgressTotal;
+CString			g_StatusString, g_VersionString;
+float			g_fShowVersion;
+BOOL			g_bWinNT;
+char			g_CWD[_MAX_PATH];	
+HANDLE			g_hSocketCheck = NULL;
+bool			g_bNoFreeDisk = false;
+std::string		g_FutecString;						//char g_FutecString[128] = {0, };
+BYTE			g_Key[10] = {0, };
+RECT			g_statusRect = {0, 415, 621, 438};
+
+// zzi - NowDN - ÆÐÄ¡¿©ºÎ¸¦ Ã¼Å©ÇÏ´Â Àü¿ªº¯¼ö.
+//		FileListVersion¸¦ °Ë»çÇÏ¿©, ÆÐÄ¡°¡ ÇÊ¿äÇÑÁöÀÇ ¿©ºÎ¸¦ ÀúÀåÇÑ´Ù.
+//		ÀÌÈÄ, Update_Thread_GuildMark ¾²·¹µå¿¡¼­ »ç¿ëÇÑ´Ù. ´Ù¸¥ °÷¿¡¼­µµ »ç¿ëÇÒ ¼ö ÀÖ°ÚÁö.
+bool			g_bNeedPatch = false;
+
+#ifdef _INTERNATIONAL_VERSION_
+//20071210 - FullVersion Check!!
+int				g_iFullVersion;
+#endif
+
+//#define HTTP_PATCH_VERSION_PLUS				1000
+//-----------------------------------------------------------------------------
+// ±ä±Þ updater.exe ÆÐÄ¡¸¦ À§ÇÑ ¹öÀü ¼öÁ¤..
+// 2000ÀÌÇÏÀÌ¸é updater.exe¸¦ ¹«Á¶°Ç ¹Þ´Â´Ù.
+//-----------------------------------------------------------------------------
+//#define HTTP_PATCH_VERSION_PLUS				2000
+
+// »ó¿ëÈ­ ÇÏ¸é¼­ »õ¹öÀüÀ¸·Î ³ª°¡±â À§ÇØ¼­!!
+#define HTTP_PATCH_VERSION_PLUS					3000
+
+#ifdef	OUTPUT_DEBUG
+	CMessageArray*		g_pDebugMessage = NULL;
+#endif
+
+//-----------------------------------------------------------------------------
+// Global
+//-----------------------------------------------------------------------------
+HWND				g_hWnd;
+
+bool				g_bActiveApp = false;
+bool				g_bActiveUpdate = true;
+DWORD				g_CurrentTime = timeGetTime();
+
+CMessageArray		g_Message;
+
+HANDLE				g_hMutex;
+
+bool				g_bHasUpdate = false;
+bool				g_bUpdateOK = false;
+
+//void				Release();
+
+DWORD				g_UpdateStartTime = 0;
+
+//bool				g_bFake = false;
+bool				g_bPatcher = false;
+
+HANDLE				g_hMessageThread = NULL;
+
+extern HANDLE		g_hConnectThread;
+extern HANDLE		g_hConnectCheck;
+
+
+int g_version = -1;
+
+
+/**********************************************************
+		Mode Setting by 2004, 7, 29 sobeit added
+**********************************************************/
+bool 	g_bNetmarble = false;
+bool 	g_bTestServer = false;
+
+bool	g_bWebLoginMode = false;
+bool	g_bOpenWeppage = false;
+BYTE	g_Dimention = 0;
+
+
+/////////////////////////////////////////////////////////////////////////////
+// CAboutDlg dialog used for App About
+
+class CAboutDlg : public CDialog
+{
+public:
+	CAboutDlg();
+
+// Dialog Data
+	//{{AFX_DATA(CAboutDlg)
+	enum { IDD = IDD_ABOUTBOX };
+	//}}AFX_DATA
+
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CAboutDlg)
+	protected:
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	//}}AFX_VIRTUAL
+
+// Implementation
+protected:
+	//{{AFX_MSG(CAboutDlg)
+	//}}AFX_MSG
+	DECLARE_MESSAGE_MAP()
+};
+
+CAboutDlg::CAboutDlg() : CDialog(CAboutDlg::IDD)
+{
+	//{{AFX_DATA_INIT(CAboutDlg)
+	//}}AFX_DATA_INIT
+}
+
+void CAboutDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialog::DoDataExchange(pDX);
+	//{{AFX_DATA_MAP(CAboutDlg)
+	//}}AFX_DATA_MAP
+}
+
+BEGIN_MESSAGE_MAP(CAboutDlg, CDialog)
+	//{{AFX_MSG_MAP(CAboutDlg)
+		// No message handlers
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CGameUpdaterDlg dialog
+
+CGameUpdaterDlg::CGameUpdaterDlg(CWnd* pParent /*=NULL*/)
+	: CDialog(CGameUpdaterDlg::IDD, pParent)
+	, m_bUpdateRunning(false)
+	, m_bFullScreen(true)
+	, m_hWorkThread(NULL)
+	, m_dwWorkThreadID(0)
+	, m_hThreadCheckTimer(NULL)
+{
+	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+	
+	m_bDragWindow = false;
+}
+
+CGameUpdaterDlg::~CGameUpdaterDlg()
+{
+	if(m_hWorkThread)
+		CloseHandle(m_hWorkThread);
+
+	if(m_hThreadCheckTimer)
+		KillTimer(0);
+	
+	m_hWorkThread		= 0;
+	m_dwWorkThreadID	= 0;
+	m_bUpdateRunning	= false;
+}
+
+void CGameUpdaterDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialog::DoDataExchange(pDX);
+	//{{AFX_DATA_MAP(CGameUpdaterDlg)
+	DDX_Control(pDX, IDC_EXPLORER, m_Explorer);
+	DDX_Control(pDX, IDC_PROGRESS1, g_Progress);
+	DDX_Control(pDX, IDC_PROGRESS2, g_ProgressTotal);
+	DDX_Control(pDX, IDC_COMBO_PROXYLIST, m_cmbProxyList);
+	DDX_Control(pDX, IDC_COMBO_RESOULVLIST, m_cmbResoulvList);
+	//}}AFX_DATA_MAP
+}
+
+BEGIN_MESSAGE_MAP(CGameUpdaterDlg, CDialog)
+	//{{AFX_MSG_MAP(CGameUpdaterDlg)
+	ON_WM_SYSCOMMAND()
+	ON_WM_PAINT()
+	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_HOMEPAGE, OnHomepage)
+	ON_BN_CLICKED(IDC_NEW_USER, OnNewUser)
+	ON_WM_MOUSEMOVE()
+	ON_WM_DESTROY()
+	ON_WM_LBUTTONUP()
+	ON_WM_LBUTTONDOWN()
+	ON_WM_TIMER()
+	ON_MESSAGE(UM_UPDATE_COMPLETE, OnUpdateComplete)
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CGameUpdaterDlg message handlers
+
+BOOL CGameUpdaterDlg::OnInitDialog()
+{
+	CDialog::OnInitDialog();
+
+	ScreenObjectInfo::Instance()->InitNormal();
+
+	// NetmarbleÀÌ°Å³ª Web Login ÀÏ¶§´Â ¿©±â µé¾î¿À¸é ¾ÈµÈ´Ù.
+	ASSERT(g_bWebLoginMode == false && g_bNetmarble == false);
+
+	/*
+	// Patcher Update
+	if (_access(PATCHER_NEW_FILENAME, 0) == 0)
+	{	
+		// ¿¹Àü Patcher¸¦ Áö¿ì°í..
+		if (remove( PATCHER_FILENAME )==0)
+		{
+			// »õ°ÍÀ» ¿¹Àü°É·Î rename
+			if (rename( PATCHER_NEW_FILENAME, PATCHER_FILENAME )==0)
+			{
+			}
+		}
+	}
+	*/
+	
+	if(__argc > 1)
+	{
+		if (strncmp(__targv[1], "PATCHER", 6) == 0)
+		{
+			g_bPatcher = true;
+		}
+		else
+		{	
+			g_FutecString = __targv[1];
+		}
+	}
+
+	g_hWnd = GetSafeHwnd();
+
+	// Add "About..." menu item to system menu.
+	LOGFONT lf;
+
+	lf.lfHeight			= 12;		// 0 = default
+	lf.lfWidth			= 0;		// 0 = ³ôÀÌ¿¡ ±âÁØÇÏ¿© ÀÚµ¿À¸·Î ¼³Á¤µÊ.
+	lf.lfEscapement		= 0;		// ¹æÇâ¼³Á¤ (900, 2700)
+	lf.lfOrientation	= 0;
+	lf.lfWeight			= FW_BOLD;
+	lf.lfItalic			= 0;		// 0 ¾Æ´Ñ °ªÀÌ¸é italicÀÌ´Ù.
+	lf.lfUnderline		= 0;
+	lf.lfStrikeOut		= 0;
+	//lf.lfCharSet		= HANGUL_CHARSET;//*/JOHAB_CHARSET;
+	lf.lfCharSet		= GB2312_CHARSET;	//by viva
+	lf.lfOutPrecision	= OUT_DEFAULT_PRECIS;
+	lf.lfClipPrecision	= CLIP_DEFAULT_PRECIS;
+	lf.lfQuality		= DEFAULT_QUALITY;
+	lf.lfPitchAndFamily = DEFAULT_PITCH|FF_DONTCARE;
+	strcpy(lf.lfFaceName, "µ¸¿òÃ¼");
+	
+	m_hStatusFont.CreateFontIndirect(&lf);
+
+	lf.lfHeight			= 10; // 0 = default
+	lf.lfWeight			= FW_NORMAL;
+	lf.lfCharSet		= ANSI_CHARSET;//*/JOHAB_CHARSET;
+	strcpy(lf.lfFaceName, "Small Fonts");
+	m_hStatusFont2.CreateFontIndirect(&lf);
+
+	
+	lf.lfHeight			= 20;		// 0 = default
+	lf.lfWidth			= 0;		// 0 = ³ôÀÌ¿¡ ±âÁØÇÏ¿© ÀÚµ¿À¸·Î ¼³Á¤µÊ.
+	lf.lfEscapement		= 0;		// ¹æÇâ¼³Á¤ (900, 2700)
+	lf.lfOrientation	= 0;
+	lf.lfWeight			= FW_BOLD;
+	lf.lfItalic			= 0;		// 0 ¾Æ´Ñ °ªÀÌ¸é italicÀÌ´Ù.
+	lf.lfUnderline		= 0;
+	lf.lfStrikeOut		= 0;
+	lf.lfCharSet		= HANGUL_CHARSET;//*/JOHAB_CHARSET;
+	lf.lfOutPrecision	= OUT_DEFAULT_PRECIS;
+	lf.lfClipPrecision	= CLIP_DEFAULT_PRECIS;
+	lf.lfQuality		= DEFAULT_QUALITY;
+	lf.lfPitchAndFamily = DEFAULT_PITCH|FF_DONTCARE;
+	strcpy(lf.lfFaceName, "HY°ß¸íÁ¶");
+	
+	m_hVersionFont.CreateFontIndirect(&lf);
+
+	const ScreenObjectInfo* pObjInfo = ScreenObjectInfo::Instance();
+
+	for(int i = 0; i < ScreenObjectInfo::BTN_MAX; ++i)
+		m_bFocus[i] = false;
+	
+	// IDM_ABOUTBOX must be in the system command range.
+	ASSERT((IDM_ABOUTBOX & 0xFFF0) == IDM_ABOUTBOX);
+	ASSERT(IDM_ABOUTBOX < 0xF000);
+
+	CMenu* pSysMenu = GetSystemMenu(FALSE);
+	if (pSysMenu != NULL)
+	{
+		CString strAboutMenu;
+		strAboutMenu.LoadString(IDS_ABOUTBOX);
+		if (!strAboutMenu.IsEmpty())
+		{
+			pSysMenu->AppendMenu(MF_SEPARATOR);
+			pSysMenu->AppendMenu(MF_STRING, IDM_ABOUTBOX, strAboutMenu);
+		}
+	}
+
+	// Set the icon for this dialog.  The framework does this automatically
+	//  when the application's main window is not a dialog
+	SetIcon(m_hIcon, TRUE);			// Set big icon
+	SetIcon(m_hIcon, FALSE);		// Set small icon
+	
+	// TODO: Add extra initialization here
+	// ÇöÀç directory¸¦ ÀúÀåÇØµÐ´Ù.
+//	strcpy(g_CWD, __argv[0]);
+
+//	// ³Ý¸¶ºí¿ë
+
+	SetCurrentDirectory(g_CWD);
+
+	/*
+	if(!_access(FILE_INFO_NETMARBLE, 0))
+	{
+		Properties NetmarbleConfig;		
+		NetmarbleConfig.load(FILE_INFO_NETMARBLE);			
+		g_bNetmarble = NetmarbleConfig.getPropertyInt("Netmarble") != 0;
+	}
+	*/
+
+	if(g_bNetmarble)
+	{
+		m_Explorer.DestroyWindow();
+//		m_ExplorerBanner.DestroyWindow();
+	}
+	else
+	{
+		const CRect& rWebBrowser = pObjInfo->rcWebBrowser;
+
+		// ¸®¼Ò½º ÆíÁý±â¿¡¼­ Á¤È®ÇÑ ÁÂÇ¥°¡ ¸ÂÃçÁöÁö ¾Ê´Â °ü°è·Î
+		m_Explorer.SetWindowPos(this,
+			rWebBrowser.left, rWebBrowser.top,
+			rWebBrowser.Width(), rWebBrowser.Height(), 0);
+
+		
+		if(g_bTestServer)
+		{
+			if(g_bPatcher)
+				m_Explorer.Navigate(URL_NAVIGATE_TEST_PATCH, 0, NULL, NULL, NULL);
+			else
+				m_Explorer.Navigate(URL_NAVIGATE_TEST, 0, NULL, NULL, NULL);
+		}
+		else
+		{
+			if(g_bPatcher)
+				m_Explorer.Navigate(URL_NAVIGATE_PATCH, 0, NULL, NULL, NULL);
+			else
+				m_Explorer.Navigate(URL_NAVIGATE, 0, NULL, NULL, NULL);
+		}
+
+//		m_ExplorerBanner.Navigate(URL_NAVIGATE_BANNER, 0, NULL, NULL, NULL);
+	}
+		
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage)
+		{
+			g_pDebugMessage->Add("Before Init");
+		}
+	#endif	
+
+	if (!Init())
+	{
+		return FALSE;
+	}
+
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage)
+		{
+			g_pDebugMessage->Add("Show Window");
+		}
+	#endif
+
+//	if (FindWindow("Updater", "Updater")!=NULL)
+//	{
+//		MessageBox(NULL, "ÀÌ¹Ì ½ÇÇàÁßÀÔ´Ï´Ù.", "DarkEden Updater", MB_OK);
+//		return 0L;
+//	}
+
+	SetWindowText(PROGRAM_TITLE);
+
+
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage!=NULL)
+		{
+			delete g_pDebugMessage;		
+		}
+		g_pDebugMessage = new CMessageArray;
+
+		//---------------------------------------------------
+		// Debug Log File Init...
+		//---------------------------------------------------
+		if (g_pDebugMessage!=NULL)
+		{
+			char logFile[128];
+			sprintf(logFile, "Log\\ULog%d.txt", timeGetTime());			
+		
+			g_pDebugMessage->Init(20, 256, logFile);
+
+			g_pDebugMessage->AddFormat("[ Compile Time : %s ]", __TIMESTAMP__);
+		}
+	#endif
+
+	OSVERSIONINFO        osVer;
+
+	// First get the windows platform
+	osVer.dwOSVersionInfoSize = sizeof(osVer);
+	if( !GetVersionEx( &osVer ) )
+	{
+		// -_-;
+		//return 0;		
+	}
+	
+	g_bWinNT = (osVer.dwPlatformId == VER_PLATFORM_WIN32_NT);
+
+//	MSG                    msg;
+	
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage)
+		{
+			g_pDebugMessage->Add("Before InitApp");
+		}
+	#endif
+
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage)
+		{
+			g_pDebugMessage->Add("Before Loop");
+		}
+	#endif
+
+	g_Progress.SetRange32(0, 0);
+	g_ProgressTotal.SetRange32(0, 0);
+	
+	int version = 0;
+
+//20071210 - FullVersionÁ¤º¸ Ãß°¡.
+//				ÇöÀç´Â ±Û·Î¹ú ¼­ºñ½º¿¡¼­¸¸ ÀÌ FullVersionÁ¤º¸¸¦ »ç¿ëÇÑ´Ù.
+//				CheckUpdateStatusÇÔ¼ö¿¡¼­, Status»Ó ¾Æ´Ï¶ó, ÀÌ ¹öÀüÁ¤º¸¿ª½Ã Ã¼Å©ÇÏµµ·Ï ÇÑ´Ù.
+#ifdef _INTERNATIONAL_VERSION_
+	std::ifstream versionFile(FILE_INFO_VERSION, std::ios_base::binary);
+	if(versionFile.is_open())
+	{
+		versionFile.read((char*)&version, 4);
+		versionFile.read((char*)&g_iFullVersion, 4);
+	}
+#else
+	std::ifstream versionFile(FILE_INFO_VERSION, std::ios_base::binary);
+	if(versionFile.is_open())
+		versionFile.read((char*)&version, 4);
+#endif
+	versionFile.close();
+
+	char szTemp[512];
+//	if(g_bTestServer && g_bNetmarble == false)
+//		sprintf(szTemp, "%1.2f", (float)version/100+3);
+//	else
+	
+	if(version > 0)
+	{
+		sprintf(szTemp, "%1.2f", (float)version/100+3);
+	}
+	else
+	{
+		sprintf(szTemp, "0.00");
+	}
+
+//	g_Progress.SetText(szTemp);
+	g_VersionString = szTemp;
+	
+//	g_Progress.SetBitmap(IDB_PROGRESS_BAR);
+//	g_Progress.SetBackgroundBitmap(IDB_PROGRESS_BACK_FILE);
+//	g_ProgressTotal.SetBitmap(IDB_PROGRESS_BAR);
+//	g_ProgressTotal.SetBackgroundBitmap(IDB_PROGRESS_BACK_TOTAL);
+
+//	Connect(0);
+
+	// CheckList
+	g_Progress.SetColor(RGB(152, 0, 0));
+	g_Progress.SetBackColor(RGB(100, 100, 100));
+	g_ProgressTotal.SetColor(RGB(152, 0, 0));
+	g_ProgressTotal.SetBackColor(RGB(100, 100, 100));
+
+	const CRect& rcProgressFiles	= pObjInfo->rcProgressFiles;
+	const CRect& rcProgressTotal	= pObjInfo->rcProgressTotal;
+
+	m_cmbProxyList.MoveWindow(470, 396, 100, 20, FALSE);
+	m_cmbResoulvList.MoveWindow(238, 437, 90, 20, FALSE);
+	g_Progress.MoveWindow(229, 417, 171, 5, FALSE);
+	g_ProgressTotal.MoveWindow(229, 427, 171, 5, FALSE);
+//	g_Progress.SetWindowPos(this, rcProgressFiles.left, rcProgressFiles.top, rcProgressFiles.Width(), rcProgressFiles.Height()-30, 0);
+//	g_ProgressTotal.SetWindowPos(this, rcProgressTotal.left, rcProgressTotal.top, rcProgressTotal.Width(), rcProgressTotal.Height(), 0);
+	g_Progress.SetDrawText(false);
+	g_ProgressTotal.SetDrawText(false);
+
+
+	// ÇØ»óµµ Á¤º¸ ·Îµå
+	InitResolutionConfig();
+
+	///////////////////////////////////////////
+	// Detach any previuos bitmap
+	m_dibBackground.bitmap.Detach();
+	
+	CProgressST::GetBitmapAndPalette(IDB_WINDOW,
+		m_dibBackground.bitmap, m_dibBackground.palette, m_dibBackground.size);
+
+	if(g_bNetmarble)
+		SetWindowPos(NULL, 0, 0, m_dibBackground.size.cx, m_dibBackground.size.cy-68, SWP_NOMOVE);
+	else
+		SetWindowPos(NULL, 0, 0, m_dibBackground.size.cx, m_dibBackground.size.cy, SWP_NOMOVE);
+
+
+	// ¹öÆ° ÀÌ¹ÌÁö
+	for(i = 0; i < ScreenObjectInfo::BTN_MAX; ++i)
+	{
+		const int resourceIdx	= pObjInfo->nButtonResourceIdx[i];
+
+		CProgressST::GetBitmapAndPalette(
+			resourceIdx, m_dibFocusButton[i].bitmap,
+			m_dibFocusButton[i].palette, m_dibFocusButton[i].size);
+	}
+
+	// ¹öÀü ¼ýÀÚ ÀÌ¹ÌÁö
+	for(i = 0; i < ScreenObjectInfo::VERNUM_MAX; ++i)
+	{
+		const int resourceIdx	= pObjInfo->nVerNumResourceIdx[i];
+
+		CProgressST::GetBitmapAndPalette(
+			resourceIdx, m_dibVersionNum[i].bitmap,
+			m_dibVersionNum[i].palette, m_dibVersionNum[i].size);
+	}
+
+	CProgressST::GetBitmapAndPalette(
+		IDB_RADIO_SELECTED, m_dibRadioSelected.bitmap,
+		m_dibRadioSelected.palette, m_dibRadioSelected.size);
+
+	//
+	CProgressST::GetBitmapAndPalette(
+		IDB_CHECK_SELECTED, m_dibWindowSelected.bitmap,
+		m_dibWindowSelected.palette, m_dibWindowSelected.size);
+
+	/////////////////////////////////////////////
+	// by svi ÉèÖÃ·Ö±æÂÊÁÐ±í
+	for (i=0; i < ScreenObjectInfo::SELRES_MAX; i++){
+		m_cmbResoulvList.AddString( pObjInfo->strSelectResolution[i] );
+	}
+
+	// by svi Ìí¼Óchannel
+	const int bufferSize = 256;
+	char szGetLineBuf[bufferSize] = "";
+
+	// vfs start
+	iovfs_base::start_vfs(FILE_DATA_PACKAGE, FS_WRITE);
+	ivfstream fileChannelList(FILE_INFO_CHANNEL, 0);
+	
+#ifdef __CHINESE__
+	m_cmbProxyList.AddString( "²âÊÔ" );
+#else
+	m_cmbProxyList.AddString( "Å×½ºÆ®" );
+#endif
+	if(fileChannelList.is_open())
+	{
+		while( fileChannelList.getline(szGetLineBuf, bufferSize) != "" )
+		{
+			if( strcmp(szGetLineBuf, "")==0 )
+				break;
+
+			std::string tmpStr = szGetLineBuf;
+			std::string proxyName = tmpStr.substr(0, tmpStr.find_first_of(' ') );
+			std::string proxyStr = tmpStr.erase(0, tmpStr.find_first_of(' ') );;
+
+			m_cmbProxyList.AddString( proxyName.c_str() );		
+			m_strTunnelList.push_back( proxyStr );
+			//MessageBox(proxyStr.c_str());
+		}
+	}
+
+	iovfs_base::end_vfs();
+
+	// »Ö¸´ÉÏ´ÎµÄÑ¡Ôñ¼ÇÂ¼
+	int iSel = 0, iReslov = 0;
+	std::ifstream selfile(FILE_INFO_CHANNEL_DEFAULT);
+	if(selfile.is_open())
+	{
+		selfile>>iSel;
+		selfile>>iReslov;
+	}
+	if(iSel >=0 && iSel <= m_strTunnelList.size() )
+	{
+		m_cmbProxyList.SetCurSel( iSel );
+	}else
+	{
+		m_cmbProxyList.SetCurSel( 0 );
+	}
+
+	if(iReslov >=0 && iReslov < ScreenObjectInfo::SELRES_MAX )
+	{
+		m_cmbResoulvList.SetCurSel( iReslov );
+	}else
+	{
+		m_cmbResoulvList.SetCurSel( ScreenObjectInfo::SELRES_1024x768 );
+	}
+
+	LPSTR pString = ::GetCommandLine();
+
+	// Patcher¿¡¼­ ½ÇÇàÇÑ Updater¶ó¸é (Updater°¡ µÎ¹øÂ° ½ÇÇàµÈ °ÍÀÌ¶ó¸é)
+	// ¹Ù·Î Á¢¼ÓÇÑ´Ù.
+	if( strstr(pString, "\" NEWSTART") != NULL )
+	{
+		Connect();
+	} 
+
+	return TRUE;  // return TRUE  unless you set the focus to a control
+}
+
+
+
+void CGameUpdaterDlg::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
+	{
+		CAboutDlg dlgAbout;
+		dlgAbout.DoModal();
+	}
+	else
+	{
+		CDialog::OnSysCommand(nID, lParam);
+	}
+}
+
+// If you add a minimize button to your dialog, you will need the code below
+//  to draw the icon.  For MFC applications using the document/view model,
+//  this is automatically done for you by the framework.
+
+void CGameUpdaterDlg::OnPaint() 
+{
+	CPaintDC dc(this); // device context for painting
+
+	RECT clientRect;
+	GetClientRect(&clientRect);
+
+	CDC bufferDC;
+	bufferDC.CreateCompatibleDC(&dc);
+
+	CBitmap bmpBuffer;
+	bmpBuffer.CreateCompatibleBitmap(&dc, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
+
+	CBitmap* pOldBufferBitmap = bufferDC.SelectObject(&bmpBuffer);
+
+	CDC tempDC;
+	tempDC.CreateCompatibleDC(&bufferDC);
+
+	CBitmap* pOldTempBitmap = tempDC.SelectObject(&m_dibBackground.bitmap);
+
+	bufferDC.BitBlt(0, 0, m_dibBackground.size.cx, m_dibBackground.size.cy, &tempDC, 0, 0, SRCCOPY);
+
+	if(g_bNetmarble)
+	{
+		bufferDC.BitBlt(0, clientRect.bottom-clientRect.top-4, m_dibBackground.size.cx, 4,
+			&tempDC, 0, m_dibBackground.size.cy-4, SRCCOPY);
+	}
+
+	ScreenObjectInfo* pObjInfo = ScreenObjectInfo::Instance();
+
+	for(int i = 0; i < ScreenObjectInfo::BTN_MAX; ++i)
+	{
+		const CRect&		rButtonRect		= pObjInfo->rcOnButton[i];
+		const DibBitmap&	rDibBitmap		= m_dibFocusButton[i];
+
+		if(m_bFocus[i] == true)
+		{
+			tempDC.SelectObject(rDibBitmap.bitmap);
+
+			bufferDC.BitBlt(rButtonRect.left, rButtonRect.top,
+				rDibBitmap.size.cx, rDibBitmap.size.cy, &tempDC, 0, 0, SRCCOPY);
+		}
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// ¹öÀüÀ» Ãâ·ÂÇØ º¾½Ã´ç
+
+	const CRect&	rButtonRect		= pObjInfo->rcOnButton[i];
+	CPoint			versionPostion	= pObjInfo->ptVersionPosition;
+
+	int versionLength	= g_VersionString.GetLength();
+
+	for(i = versionLength - 1; i >= 0; --i)
+	{
+		const DibBitmap* pDibBitmap = NULL;
+		char ch = g_VersionString[i];
+
+		if(ch == '.')
+		{
+			pDibBitmap = &m_dibVersionNum[ScreenObjectInfo::VERNUM_DOT];
+		}
+		else
+		{
+			int idx = ch - '0';
+			pDibBitmap = &m_dibVersionNum[idx];
+		}
+
+		versionPostion.x -= pDibBitmap->size.cx;
+
+		// ±×·ÁÁØ´ç
+		tempDC.SelectObject(pDibBitmap->bitmap);
+		bufferDC.BitBlt(versionPostion.x, versionPostion.y,
+				pDibBitmap->size.cx, pDibBitmap->size.cy, &tempDC, 0, 0, SRCCOPY);
+	}
+
+	// ¼ýÀÚ¸¦ ´Ù ±×·ÈÀ¸´Ï Ver¸¦ ±×·Áº¸ÀÚ
+	const DibBitmap&	rDibBitmapVer	= m_dibVersionNum[ScreenObjectInfo::VERNUM_VER];
+
+	versionPostion.x -= rDibBitmapVer.size.cx + 2;
+
+	tempDC.SelectObject(rDibBitmapVer.bitmap);
+	bufferDC.BitBlt(versionPostion.x, versionPostion.y,
+			rDibBitmapVer.size.cx, rDibBitmapVer.size.cy, &tempDC, 0, 0, SRCCOPY);
+
+	// ¹öÀüÀ» Ãâ·Â ³¡~
+	//////////////////////////////////////////////////////////////////////////
+
+
+	//////////////////////////////////////////////////////////////////////////
+	// ÇØ»óµµ ÄÞº¸ ¹öÆ°
+/*
+	int		ResolutionIdx	= (m_bResolution1024) ? ScreenObjectInfo::SELRES_1024x768 : ScreenObjectInfo::SELRES_800x600;
+	CRect&	rResolutionRect	= pObjInfo->rcOnResolution[ResolutionIdx];
+
+	tempDC.SelectObject(m_dibRadioSelected.bitmap);
+	bufferDC.BitBlt(rResolutionRect.left, rResolutionRect.top,
+			m_dibRadioSelected.size.cx, m_dibRadioSelected.size.cy, &tempDC, 0, 0, SRCCOPY);
+*/
+
+	//
+	//////////////////////////////////////////////////////////////////////////
+
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+
+	if(m_bFullScreen){
+		CRect&	rcFullScreen	= pObjInfo->rcOnFullScreen;
+		
+		tempDC.SelectObject(m_dibWindowSelected.bitmap);
+		bufferDC.BitBlt(rcFullScreen.left, rcFullScreen.top,
+			m_dibWindowSelected.size.cx, m_dibWindowSelected.size.cy, &tempDC, 0, 0, SRCCOPY);
+	}
+	//
+	//////////////////////////////////////////////////////////////////////////
+
+
+	bufferDC.SetBkMode(TRANSPARENT);
+
+	CFont *oldFont = bufferDC.SelectObject(&m_hStatusFont2);
+	bufferDC.SetTextColor(RGB(255, 255, 255));
+	int Lower, Upper;
+	g_Progress.GetRange(Lower, Upper);
+
+	bool ProgressString = false;
+	
+	CRect& rStatusRect			= pObjInfo->rcStatusString;
+	CRect& rStatusProcessRect	= pObjInfo->rcStatusProgessString;
+
+	bool bGuildMark = (g_StatusString == "±æµå¸¶Å©¸¦ ¾÷µ¥ÀÌÆ®ÇÏ°í ÀÖ½À´Ï´Ù.");
+
+	if(Upper > 0 && bGuildMark == false)
+	{
+		CString tempString;
+		//NowDN - Progress¹Ù¿¡ ¼³Á¤ÇÏ´Â Lower, Upper°ªÀÌ, NowCDNÀÇ °æ¿ì, ³Ê¹« Ä¿¼­ Progress¹Ù°¡ Á¤»óÀûÀ¸·Î ±×·ÁÁöÁö ¾Ê´Â´Ù.
+		// ¶§¹®¿¡, ´Ù¿î·Îµå ¹ÞÀ» ÆÄÀÏÅ©±â°¡ Å¬ °æ¿ì, MByte·Î Ç¥ÇöÇÏ±â À§ÇØ, RangeUnit¸â¹ö¸¦ ProgressÅ¬·¹½º¿¡ Ãß°¡ÇÏ°í,
+		// ±× °ªÀ» ÀÌ¿ëÇØ, MByte¿Í KByte·Î Ç¥ÇöÇÏ´Â Ã³¸®ºÐ±â.
+		// ³ª´©´Â °ªÀÌ KByte¿Í MByte°¡ °°Àº ÀÌÀ¯´Â, Progress¹Ù¿¡ Range¼³Á¤À» ÇÏ´Â °÷¿¡¼­, MByteÀÇ °æ¿ì, ¸Õ¼­ 1024·Î ³ª´©±â ¶§¹®. <»ç¿ë½Ã ÁÖÀÇ¿ä¸Á »çÇ×>
+		// ÇÑ °³ Ãß°¡ -- °³¼ö´ÜÀ§. -_-;; ±âÁ¸¿¡´Â UpdateManagerÀÇ Apply__°è¿­ ÇÔ¼ö¿¡¼­ ProgressTotal¸¦ ÀÌ¿ëÇÏ¿´À¸³ª, Now~~´Â.. ±×·² ¼ö ¾ø´Â ±¸Á¶. 
+		// ¶§¹®¿¡, Apply°è¿­ ÇÔ¼ö¿¡¼­, __USE_NOWCDN__ÀÌ¸é ±×³É Progress¸¦ ÀÌ¿ëÇÏ¸ç, ±×·² °æ¿ì, K³ª M´ÜÀ§¸¦ »ç¿ëÇÏ¸é ¾ÈµÈ´Ù. °³¼ö¸¦ »ç¿ëÇØ¾ß ÇÑ´Ù. ±×·¡¼­..Ãß°¡Çß´Ù. ¤Ð¤Ð.. ¸¾¿¡ ¾ÈµéÁö¸¸ ½Ã°£ÀÇ ¾Ð¹Ú.
+
+		int RangeUnit = g_Progress.GetRangeUnit ();
+		if (RangeUnit == __COUNT__)
+		{
+			tempString.Format("%d°³/%d°³", g_Progress.GetPos(), Upper);
+		}
+		else if (RangeUnit == __MBYTE__)
+		{
+			tempString.Format("%.1fMB/%.1fMB", g_Progress.GetPos() / 1024.0f, Upper / 1024.0f);
+		}
+		else	//MByte°¡ ¾Æ´Ï¸é ¹«Á¶°Ç KByte·Î ..
+		{
+			tempString.Format("%.1fKB/%.1fKB", g_Progress.GetPos() / 1024.0f, Upper / 1024.0f);
+		}
+		//
+		bufferDC.SetTextColor(RGB(255, 255, 255));
+		bufferDC.DrawText(tempString, &rStatusProcessRect, DT_SINGLELINE | DT_LEFT | DT_BOTTOM);
+		ProgressString = true;
+	}
+
+	g_ProgressTotal.GetRange(Lower, Upper);
+	if(Upper > 0)
+	{
+		CString tempString;
+
+		
+//		if(bGuildMark)
+			tempString.Format("%d/%d", g_ProgressTotal.GetPos(), Upper);
+//		else
+//			tempString.Format("%sKB/%sKB", GetSeperator(g_ProgressTotal.GetPos() / 1024).c_str(), GetSeperator(Upper / 1024).c_str());
+
+		bufferDC.SetTextColor(RGB(180, 180, 180));
+		bufferDC.DrawText(tempString, &rStatusProcessRect, DT_SINGLELINE | DT_RIGHT | DT_BOTTOM);
+		ProgressString = true;
+	}
+
+	bufferDC.SelectObject(&m_hStatusFont);
+	bufferDC.SetTextColor(RGB(255, 180, 0));
+
+	int verticalline = ProgressString ? DT_TOP : DT_VCENTER;
+
+	bufferDC.DrawText(g_StatusString, &rStatusRect, DT_SINGLELINE | DT_CENTER | verticalline);
+	
+	bufferDC.SelectObject(oldFont);
+
+	tempDC.SelectObject(pOldTempBitmap);
+
+	dc.BitBlt(0, 0, clientRect.right-clientRect.left, clientRect.bottom-clientRect.top, &bufferDC, 0, 0, SRCCOPY);
+
+	bufferDC.SelectObject(pOldBufferBitmap);
+
+	if (IsIconic())
+	{
+		CPaintDC dc(this); // device context for painting
+
+		SendMessage(WM_ICONERASEBKGND, (WPARAM) dc.GetSafeHdc(), 0);
+
+		// Center icon in client rectangle
+		int cxIcon = GetSystemMetrics(SM_CXICON);
+		int cyIcon = GetSystemMetrics(SM_CYICON);
+		CRect rect;
+		GetClientRect(&rect);
+		int x = (rect.Width() - cxIcon + 1) / 2;
+		int y = (rect.Height() - cyIcon + 1) / 2;
+
+		// Draw the icon
+		dc.DrawIcon(x, y, m_hIcon);
+	}
+	else
+	{
+		CDialog::OnPaint();
+	}
+
+	if(g_bNetmarble)
+	{
+		static bool bFirstConnect = true;
+		
+		if(bFirstConnect)
+		{
+			bFirstConnect = false;
+			Connect();
+		}
+	}
+
+}
+
+// The system calls this to obtain the cursor to display while the user drags
+//  the minimized window.
+HCURSOR CGameUpdaterDlg::OnQueryDragIcon()
+{
+	return (HCURSOR) m_hIcon;
+}
+
+//-----------------------------------------------------------------------------
+// Release
+//-----------------------------------------------------------------------------
+void
+CGameUpdaterDlg::Release()
+{
+	g_bActiveUpdate = FALSE;
+
+//	if(g_hMessageThread != NULL)
+//	{
+//		TerminateThread( g_hMessageThread, 0 );
+//		CloseHandle( g_hMessageThread );
+//
+//		CloseHandle( g_hSocketCheck );
+//	}
+//
+//	if(g_hConnectThread != NULL)
+//	{
+//		TerminateThread( g_hConnectThread, 0 );
+//		CloseHandle( g_hConnectThread );
+//		CloseHandle( g_hConnectCheck );
+//	}
+
+//	DestroyWindow();
+}
+
+BOOL CGameUpdaterDlg::DestroyWindow() 
+{
+	// TODO: Add your specialized code here and/or call the base class
+	#ifdef OUTPUT_DEBUG
+		if (g_pDebugMessage)
+		{
+			g_pDebugMessage->Add("End Loop");
+
+			g_pDebugMessage->Add("--------------- Delete DebugMessageArray --------------");		
+			delete g_pDebugMessage;	
+			g_pDebugMessage = NULL;
+		}
+	#endif
+		
+	Release();
+
+	
+	return CDialog::DestroyWindow();
+}
+
+//-----------------------------------------------------------------------------
+// Name: InitFail()
+// Desc: This function is called if an initialization function fails
+//-----------------------------------------------------------------------------
+HRESULT InitFail(HWND hWnd, LPCTSTR szError,...)
+{
+//	ShowCursor( TRUE );
+//	ShowWindow(g_hWnd, SW_HIDE);
+
+	char		szBuf[1024];
+	va_list		vl;
+
+	va_start(vl, szError);
+
+	vsprintf(szBuf, szError, vl);
+
+	MessageBox(hWnd, szBuf, PROGRAM_TITLE, MB_OK | MB_ICONERROR);
+
+	va_end(vl);
+
+	return 0;
+}
+
+//-----------------------------------------------------------------------------
+// Init
+//-----------------------------------------------------------------------------
+bool
+CGameUpdaterDlg::Init()
+{
+	//-----------------------------------------------------
+	// Message ÃÊ±âÈ­
+	//-----------------------------------------------------
+//	g_Message.Init(MAX_TEXT, 80);
+
+	//-----------------------------------------------------
+	// test timer
+	//-----------------------------------------------------
+//	SetTimer(100, 1000, NULL);
+
+	return true;
+}
+
+void CGameUpdaterDlg::Connect()
+{
+	if(m_bUpdateRunning)
+	{
+//		MessageBox("ÀÌ¹Ì ÆÐÄ¡ ÀÛ¾÷ÀÌ ÁøÇàÁßÀÔ´Ï´Ù.", NULL, MB_OK | MB_ICONINFORMATION);
+		MessageBox(_STR_ALREADY_RUNNING_, NULL, MB_OK | MB_ICONINFORMATION);
+		return;
+	}
+
+	//¿©±â¼­, ÀÌÀü¹öÀü°ú Nowcom ¹öÀüÀ¸·Î ºÐ±âÇÑ´Ù.
+#ifdef __USE_NOWCDN__
+	NowDN_Start ();
+	return;
+#endif
+	//
+
+	m_hWorkThread = (HANDLE)_beginthreadex(
+		NULL, 0, Update_Thread, &m_UpdateManager, 0, (unsigned int *)&m_dwWorkThreadID);
+	
+	SetThreadPriority(m_hWorkThread, THREAD_PRIORITY_HIGHEST);	
+
+	m_bUpdateRunning = true;
+
+	m_hThreadCheckTimer = (HANDLE)SetTimer(0, 100, NULL);
+}
+
+
+//----------------------------------------------------------
+// ÇØ»óµµ Á¤º¸¸¦ ·ÎµåÇÑ´Ù.
+//----------------------------------------------------------
+void CGameUpdaterDlg::InitResolutionConfig()
+{
+	int		nResolutionX, nResolutionY, nFullScreen;
+	
+	try
+	{
+		Properties ResolutionConfig;
+		ResolutionConfig.load(FILE_INFO_RESOLUTION);
+
+		nResolutionX	= ResolutionConfig.getPropertyInt("ResolutionX");
+		nResolutionY	= ResolutionConfig.getPropertyInt("ResolutionY");
+		nFullScreen		= ResolutionConfig.getPropertyInt("FullScreen");
+	}
+	catch (...)	// ÆÄÀÏÀÌ ¾ø´Â °æ¿ì
+	{
+		nResolutionX = 1024;
+		nResolutionY = 768;
+		nFullScreen = 1;
+	}
+
+
+
+	//m_bResolution1024 = ( nResolutionX == 1024 );
+	m_bFullScreen	= !nFullScreen;
+}
+
+//----------------------------------------------------------
+// ÇØ»óµµ Á¤º¸¸¦ ¼¼ÀÌºêÇÑ´Ù.
+//----------------------------------------------------------
+void CGameUpdaterDlg::SaveResolutionConfig()
+{
+	std::ofstream file(FILE_INFO_RESOLUTION);
+	
+	int iReslov = m_cmbResoulvList.GetCurSel(); 
+	if( iReslov == ScreenObjectInfo::SELRES_800x600 )
+	{
+		m_nResolutionX = 800; 
+		m_nResolutionY = 600;
+	}else if( iReslov == ScreenObjectInfo::SELRES_1024x768 )
+	{
+		m_nResolutionX = 1024; 
+		m_nResolutionY = 768;
+	}else if( iReslov == ScreenObjectInfo::SELRES_1280x720 )
+	{
+		m_nResolutionX = 1280;
+		m_nResolutionY = 720;
+	}else if( iReslov == ScreenObjectInfo::SELRES_1280x768 )
+	{
+		m_nResolutionX = 1280;
+		m_nResolutionY = 768;
+	}else if( iReslov == ScreenObjectInfo::SELRES_1280x960 )
+	{
+		m_nResolutionX = 1280; 
+		m_nResolutionY = 960;
+	}else if( iReslov == ScreenObjectInfo::SELRES_1280x1024 )
+	{
+		m_nResolutionX = 1280; 
+		m_nResolutionY = 1024;
+	}
+
+	file << "ResolutionX: " << m_nResolutionX << '\n';
+	file << "ResolutionY: " << m_nResolutionY << '\n';
+	file << "FullScreen: " << (m_bFullScreen ? "0" : "1") << '\n';
+}
+
+
+//----------------------------------------------------------
+// »óÅÂ ¸Þ½ÃÁö ¼³Á¤
+//----------------------------------------------------------
+void CGameUpdaterDlg::SetStatusString(const char* message)
+{
+	g_StatusString = message;
+
+	const CRect& rStatusRect = ScreenObjectInfo::Instance()->rcStatusString;
+	InvalidateRect(&rStatusRect, FALSE);
+}
+
+
+void CGameUpdaterDlg::OnHomepage() 
+{
+	// TODO: Add your control notification handler code here
+//	ShellExecute(g_hWnd, NULL, URL_HOMEPAGE, NULL, NULL, SW_MAXIMIZE);
+}
+
+void CGameUpdaterDlg::OnNewUser() 
+{
+	// TODO: Add your control notification handler code here
+//	ShellExecute(g_hWnd, NULL, URL_NEWUSER, NULL, NULL, SW_MAXIMIZE);
+	
+}
+
+void CGameUpdaterDlg::OnOK() 
+{
+	// TODO: Add extra validation here
+	Release();
+
+	CDialog::OnOK();
+}
+
+void CGameUpdaterDlg::OnCancel() 
+{
+	if(m_bUpdateRunning)
+	{
+//		MessageBox(
+//			"ÆÐÄ¡ Áß¿¡´Â ¾÷µ¥ÀÌÅÍ¸¦ Á¾·áÇÒ ¼ö ¾ø½À´Ï´Ù.\n\n"
+//			"°­Á¦·Î Á¾·áÇÒ °æ¿ì µ¥ÀÌÅÍ°¡ ¼Õ»óµÉ ¼ö ÀÖ½À´Ï´Ù.",
+//			NULL, MB_OK | MB_ICONERROR);
+		MessageBox(_STR_INFO_EXITONRUNNING_, NULL, MB_OK | MB_ICONERROR);
+
+		return;
+	}
+
+	// TODO: Add extra cleanup here
+	Release();
+	
+	CDialog::OnCancel();
+}
+
+/*
+bool
+CheckDarkEdenFile()
+{
+	_chdir( g_CWD );
+
+	bool bAbnormalDarkedenFile = false;
+
+	FILE *fp=fopen(DARKEDEN_FILENAME, "rb");
+
+	if(fp == NULL)	// Çã°Æ ½ÇÇàÆÄÀÏÀÌ ¾ø´Ù´Ï -_-;; ³¶ÆÐ
+	{
+		bAbnormalDarkedenFile = true;
+	}
+	else			// ½ÇÇàÆÄÀÏÀÌ Á¤»óÀûÀÎÁö È®ÀÎÇÑ´Ù.
+	{
+		fseek(fp,0,SEEK_END);
+		DWORD FileSize = ftell(fp);
+		int		seek_char[6];
+		for(int i = 0; i < 6; i++)
+		{
+			fseek(fp, FileSize*(i+1)/6-1, SEEK_SET);
+			seek_char[i] = fgetc(fp);
+		}
+		fclose(fp);
+		BYTE CurKey[10];
+
+		CurKey[0] = (FileSize&0xff000000)>>24;
+		CurKey[1] = (FileSize&0x00ff0000)>>16;
+		CurKey[2] = (FileSize&0x0000ff00)>>8;
+		CurKey[3] = (FileSize&0x000000ff);	
+
+		for(i = 0; i < 6 ; i++)
+			CurKey[4+i] = (BYTE)seek_char[i];
+
+		bAbnormalDarkedenFile = (memcmp(CurKey, g_Key, 10) != 0);
+	}
+
+	if(bAbnormalDarkedenFile)
+	{
+		// Å°¶û Æ²¸®´Ù
+		bool bError = true;
+
+		std::string strDownloadURL;
+
+		// Á¤º¸ ÆÄÀÏ¿¡¼­ ´Ù¿î¹ÞÀ» URLÀ» ÀÐ¾î¿Â´Ù.
+		if(g_pConfig == NULL)
+		{
+			g_pConfig = new Properties();
+			g_pConfig->load(FILE_INFO_UPDATECLIENT);
+		}
+
+		try
+		{
+			strDownloadURL = g_pConfig->getProperty("HttpUrl");
+		}
+		catch (...)
+		{
+			// ¹¹ -_-;; ¾øÀ¸¸é ¸»Áö ¹¹
+		}
+
+		delete g_pConfig;
+		g_pConfig = NULL;
+
+		// strDownloadURLÀ» ÀÐ¾ú´Ù¸é º¹±¸ ÇÒ ¼ö ÀÖ´Â °¡´É¼ºÀÌ ÀÖ»ï
+		if(!strDownloadURL.empty())
+		{
+			std::string webFolder;
+
+			if(g_bNetmarble)		webFolder = "/NetMarble/";
+			else if(g_bTestServer)	webFolder = "/TestServer/";
+			else					webFolder = "/RealServer/";
+
+			std::string webfilepath		= "http://" + strDownloadURL + COMPRESS_EXE_HTTP_FOLDER + webFolder + COMPRESS_EXE_NAME;
+			std::string downfilepath	= COMPRESS_EXE_NAME;
+
+			// »õ·Î¿î ÆÄÀÏÀ» ¹Þ±âÀ§ÇØ Ä³½Ã¸¦ Áö¿öÁØ´Ù.
+			//DeleteUrlCacheEntry(webfilepath.c_str());
+
+			//g_StatusString = "½ÇÇàÆÄÀÏÀ» º¹±¸ÇÏ°í ÀÖ½À´Ï´Ù.";
+			//InvalidateRect(&rStatusRect, FALSE);
+
+			// ¾ÐÃàµÈ ½ÇÇàÆÄÀÏÀ» ´Ù¿î¹Þ´Â´Ù.
+			HRESULT hr = URLDownloadToFile(NULL, webfilepath.c_str(), downfilepath.c_str(), 0, NULL);
+			
+			if(SUCCEEDED(hr))
+			{
+				// ±úÁø ½ÇÇàÆÄÀÏÀ» ¹é¾÷ÇØµÐ´Ù.
+				MoveFile(DARKEDEN_EXE_NAME, DARKEDEN_EXE_BACKUP_NAME);
+
+				MZLib compressExeFile;
+				if(compressExeFile.Uncompress(downfilepath.c_str()))
+				{
+					bError = false;	// º¹±¸Çß½É
+					MessageBox(g_hWnd,
+						"[ ½ÇÇàÆÄÀÏÀÌ ¼Õ»óµÇ¾î ÀÓ½Ã·Î º¹±¸ÇÏ¿´½À´Ï´Ù. ]\r\n\r\n"
+						"DarkedenÀ» °è¼ÓÇÒ ¼ö´Â ÀÖÁö¸¸\r\n"
+						"¹ÙÀÌ·¯½º °¨¿° È¤Àº ÇÏµå¿þ¾î ¼Õ»óÀÌ ÀÇ½ÉµË´Ï´Ù.\r\n"
+						"ÀÌ ¹®Á¦°¡ Áö¼ÓµÇ¸é ½Ã½ºÅÛ¿¡ Ä¡¸íÀûÀÏ ¼ö ÀÖ½À´Ï´Ù.\r\n"
+						"¹é½Å ÇÁ·Î±×·¥À» ÀÌ¿ëÇÏ¿© ¹ÙÀÌ·¯½º °Ë»ç¸¦ ÇÏ°Å³ª\r\n"
+						"µð½ºÅ© °Ë»ç ¹× Á¤¸®, Á¶°¢ ¸ðÀ½À» ÅëÇØ\r\n"
+						"ÇÏµåµð½ºÅ©ÀÇ ¿À·ù¸¦ °Ë»çÇØº¸½Ã±â ¹Ù¶ø´Ï´Ù.",
+						"Darkeden Execute Warning", MB_OK | MB_ICONWARNING);
+				}
+
+				// ´Ù¿î¹ÞÀº ÆÄÀÏÀº ÀûÀýÇÏ°Ô Áö¿öÁØ´Ù.	
+				DeleteFile(downfilepath.c_str());
+
+				//g_StatusString = "½ÇÇàÆÄÀÏÀ» º¹±¸ÇÏ¿´½À´Ï´Ù.";
+				//InvalidateRect(&rStatusRect, FALSE);
+			}
+		}
+		
+		// º¹±¸ ÇÒ ¼ö ¾ø´Â °æ¿ì
+		if(bError)
+		{
+			//g_StatusString = "Á¤»óÀûÀÎ ½ÇÇàÆÄÀÏÀÌ ¾Æ´Õ´Ï´Ù.";
+			//InvalidateRect(&rStatusRect, FALSE);
+
+			MessageBox(g_hWnd,
+				"[ Á¤»óÀûÀÎ ½ÇÇàÆÄÀÏÀÌ ¾Æ´Õ´Ï´Ù. ]\r\n\r\n"
+				"¹ÙÀÌ·¯½º °¨¿° È¤Àº ÇÏµå¿þ¾î ¼Õ»óÀÌ ÀÇ½ÉµË´Ï´Ù.\r\n"
+				"ÀÌ ¹®Á¦°¡ Áö¼ÓµÇ¸é ½Ã½ºÅÛ¿¡ Ä¡¸íÀûÀÏ ¼ö ÀÖ½À´Ï´Ù.\r\n"
+				"¹é½Å ÇÁ·Î±×·¥À» ÀÌ¿ëÇÏ¿© ¹ÙÀÌ·¯½º °Ë»ç¸¦ ÇÏ°Å³ª\r\n"
+				"µð½ºÅ© °Ë»ç ¹× Á¤¸®, Á¶°¢ ¸ðÀ½À» ÅëÇØ\r\n"
+				"ÇÏµåµð½ºÅ©ÀÇ ¿À·ù¸¦ °Ë»çÇØº¸½Ã±â ¹Ù¶ø´Ï´Ù.",
+				"Darkeden Execute Error", MB_OK | MB_ICONERROR);
+		}
+
+		// ÀÏ´Ü ´Ù½Ã ½ÇÇàÇØ¾ßÇÔ
+		return false;
+	}
+	
+	return true;
+}
+*/
+
+void CGameUpdaterDlg::OnMouseMove(UINT nFlags, CPoint point) 
+{
+	//////////////////////////////////////////////////////////////////////////
+	// µå·¡±× Ã³¸®
+	if(m_bDragWindow)
+	{
+		CRect rcClientToScreen(point, CSize(0, 0));
+		ClientToScreen(&rcClientToScreen);
+
+		CPoint windowPos = rcClientToScreen.TopLeft() - m_ptPickPostion;
+		SetWindowPos(NULL, windowPos.x, windowPos.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	bool bRefresh = false;
+	CRect refreshRect;
+	refreshRect.SetRectEmpty();
+
+	const ScreenObjectInfo* pObjInfo = ScreenObjectInfo::Instance();
+
+
+	// Exit Button
+	for(int i = 0; i < ScreenObjectInfo::BTN_MAX; ++i)
+	{
+		//071004 zzi - Check Enable : EnableÀÌ ¾Æ´Ï¸é..¹Ù·Î Continue!!
+		if (!pObjInfo->bButtonEnable[i])
+			continue;
+
+		const CRect&	rFocusRect	= pObjInfo->rcOnButton[i];
+		const bool		bNowFocus	= rFocusRect.PtInRect(point) ? true : false;
+
+		if(bNowFocus != m_bFocus[i])
+		{
+			bRefresh = true;
+			refreshRect.UnionRect(&refreshRect, &rFocusRect);
+		}
+		m_bFocus[i] = bNowFocus;
+	}
+	
+	if(bRefresh)
+		InvalidateRect(&refreshRect, FALSE);
+	
+	CDialog::OnMouseMove(nFlags, point);
+}
+
+
+BEGIN_EVENTSINK_MAP(CGameUpdaterDlg, CDialog)
+    //{{AFX_EVENTSINK_MAP(CGameUpdaterDlg)
+	ON_EVENT(CGameUpdaterDlg, IDC_EXPLORER, 259 /* DocumentComplete */, OnDocumentCompleteExplorer, VTS_DISPATCH VTS_PVARIANT)
+	//}}AFX_EVENTSINK_MAP
+END_EVENTSINK_MAP()
+
+
+void CGameUpdaterDlg::OnDocumentCompleteExplorer(LPDISPATCH pDisp, VARIANT FAR* URL) 
+{
+	IDispatch *pDisp2 = m_Explorer.GetDocument();
+	
+    if (pDisp2 != NULL)
+    {
+		IHTMLDocument2* pHTMLDocument2;
+		
+		HRESULT hr;
+		
+		hr = pDisp2->QueryInterface(IID_IHTMLDocument2, (void**)&pHTMLDocument2);
+		
+		if (hr == S_OK)
+		{
+			IHTMLElement *pIElement;
+			hr = pHTMLDocument2->get_body(&pIElement);
+			
+			//* ½ºÅ©·Ñ ¹Ù¸¦ Áö¿ìÀÚ
+			IHTMLBodyElement *pIBodyElement;
+			hr = pIElement->QueryInterface(IID_IHTMLBodyElement, (void**)&pIBodyElement);
+	
+			CString strScroll = _T("no");   // yes no auto
+            BSTR bstrScroll = strScroll.AllocSysString();
+
+			pIBodyElement->put_scroll(bstrScroll);
+			//*/
+
+			//* Å×µÎ¸®¸¦ Áö¿ìÀÚ
+			IHTMLStyle *pIStyle;
+			hr = pIElement->get_style(&pIStyle);
+
+			CString strBorder = _T("border:0px");
+            BSTR bstrBorder = strBorder.AllocSysString();
+
+			pIStyle->put_cssText(bstrBorder);
+			//*/
+        }
+		
+        pDisp2->Release ();		
+    }	
+}
+
+//Nowcom
+LRESULT CGameUpdaterDlg::OnUpdateComplete (WPARAM wParam,LPARAM lParam)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)lParam;
+
+	pDlg->Start_GuildMarkUpdate ();
+
+/*
+	//¿©±â¼­, ±æµå¸¶Å©¸¦ ´Ù¿î·ÎµåÇÒ ½º·¹µå¸¦ ½ÃÀÛÇÑ´Ù.
+	m_hWorkThread = (HANDLE)_beginthreadex(
+		NULL, 0, Update_Thread, &m_UpdateManager, 0, (unsigned int *)&m_dwWorkThreadID);
+	
+	SetThreadPriority(m_hWorkThread, THREAD_PRIORITY_HIGHEST);	
+
+//	m_bUpdateRunning = true;
+
+	m_hThreadCheckTimer = (HANDLE)SetTimer(0, 100, NULL);*/
+	return 1;
+}
+
+void CGameUpdaterDlg::OnLButtonUp(UINT nFlags, CPoint point) 
+{
+	//////////////////////////////////////////////////////////////////////////
+	// µå·¡±× ¿Ï·á
+	m_bDragWindow = false;
+	ReleaseCapture();
+	//////////////////////////////////////////////////////////////////////////
+
+	if(m_bFocus[ScreenObjectInfo::BTN_CUSTOMERS])
+		ShellExecute(NULL, "open", WEBBROWSER_NAME, URL_CUSTOMERS, NULL, SW_SHOWNORMAL);
+
+	if(m_bFocus[ScreenObjectInfo::BTN_ACCOUNT])
+		ShellExecute(NULL, "open", WEBBROWSER_NAME, URL_ACCOUNT, NULL, SW_SHOWNORMAL);
+
+	if(m_bFocus[ScreenObjectInfo::BTN_START])
+	{
+		// ¼ÇÂ¼Ñ¡ÔñµÄÍ¨µÀ
+		int iSel = m_cmbProxyList.GetCurSel(); 
+		int iReslov = m_cmbResoulvList.GetCurSel(); 
+		std::ofstream selfile(FILE_INFO_CHANNEL_DEFAULT);
+		selfile <<iSel<<"\n";
+		selfile <<iReslov;
+		selfile.close();
+
+		Connect();
+	}
+
+	if(m_bFocus[ScreenObjectInfo::BTN_EXIT])
+		OnCancel();
+
+
+	//////////////////////////////////////////////////////////////////////////
+	// ÇØ»óµµ ¶óµð¿À ¹öÆ°
+	CRect	refreshRect;
+	bool	bRefresh = false;
+	refreshRect.SetRectEmpty();
+
+	const ScreenObjectInfo* pObjInfo		= ScreenObjectInfo::Instance();
+
+	/*
+	for(int i = 0; i < ScreenObjectInfo::SELRES_MAX; ++i)
+	{
+		refreshRect.UnionRect(&refreshRect, &pObjInfo->rcOnResolution[i]);
+
+		const CRect& rResolutionRect = pObjInfo->rcOnResolution[i];
+		if(rResolutionRect.PtInRect(point))
+		{
+			m_bResolution1024 = (i == ScreenObjectInfo::SELRES_1024x768);
+			bRefresh	 = true;
+		}
+	} */
+
+
+	// ÅÐ¶ÏÊÇ·ñÑ¡ÖÐÈ«ÆÁ
+	const CRect& rFullScreenRect = pObjInfo->rcOnFullScreen;
+	if(rFullScreenRect.PtInRect(point))
+	{
+		refreshRect.UnionRect(&refreshRect, rFullScreenRect);
+		m_bFullScreen	 = !m_bFullScreen;
+		bRefresh	 = true;
+	}
+
+
+	if(bRefresh)
+		InvalidateRect(&refreshRect, FALSE);
+	//
+	//////////////////////////////////////////////////////////////////////////
+
+	CDialog::OnLButtonUp(nFlags, point);
+}
+
+void CGameUpdaterDlg::OnDestroy() 
+{
+	CDialog::OnDestroy();
+	
+	SaveResolutionConfig();
+}
+
+void CGameUpdaterDlg::OnLButtonDown(UINT nFlags, CPoint point) 
+{
+	const ScreenObjectInfo* pObjInfo = ScreenObjectInfo::Instance();
+
+	//////////////////////////////////////////////////////////////////////////
+	// µå·¡±× ½ÃÀÛ
+	if(pObjInfo->rcDragWindow.PtInRect(point))
+	{
+		m_bDragWindow	= true;
+		m_ptPickPostion = point;
+		SetCapture();
+	}
+	//////////////////////////////////////////////////////////////////////////
+	
+	CDialog::OnLButtonDown(nFlags, point);
+}
+
+void CGameUpdaterDlg::OnTimer(UINT nIDEvent) 
+{
+		//char szBufNew11[256];
+		//sprintf(szBufNew11, "OnTimer\n");
+
+		//std::ofstream filenew1111("×ÊÔ´¼ì²é2.log", std::ios::out | std::ios::app);
+		//filenew1111 << szBufNew11 << std::endl;
+		//filenew1111.close();
+
+	if(nIDEvent == 0)
+	{
+		// ½º·¹µå°¡ Á¾·áµÇ±æ ±â´Ù¸°´Ù.
+		DWORD exitCode = STILL_ACTIVE;
+		GetExitCodeThread(m_hWorkThread, &exitCode);
+		
+		if(exitCode != STILL_ACTIVE)
+		{
+			KillTimer(nIDEvent);
+			
+			m_hThreadCheckTimer = NULL;
+			m_bUpdateRunning	= false;
+
+			SaveResolutionConfig();
+			
+			char szParam[256];
+			int curSel = m_cmbProxyList.GetCurSel();
+
+			//char szBufNew1[256];
+			//sprintf(szBufNew1, "CTypePack Invaild Index File: %d\n",
+			//exitCode);
+
+			//std::ofstream filenew111("×ÊÔ´¼ì²é1111111.log", std::ios::out | std::ios::app);
+			//filenew111 << szBufNew1 << std::endl;
+			//filenew111.close();
+
+			switch(exitCode)
+			{
+			case EXITCODE_PATCH_COMPLETE:
+				
+				if( curSel != 0){
+					sprintf(szParam, "%s %s", "NEWSTART", m_strTunnelList[curSel-1].c_str() );
+					//MessageBox(szParam);
+					//_spawnl(_P_OVERLAY, DARKEDEN_FILENAME, DARKEDEN_FILENAME, szParam, NULL);
+					//ShellExecute(NULL,"open","fk.exe",szParam,NULL,SW_SHOWNORMAL);
+					char szBufStart[256];
+
+					sprintf(szBufStart, "ping -n 3 127.1 >nul\ntaskkill /f /im updater.exe\ntaskkill /f /im Updater.exe\nstart fk.exe %s\ndel start.bat\n",szParam);
+					std::ofstream filestart("start.bat", std::ios::out | std::ios::app);
+					filestart << szBufStart << std::endl;
+					filestart.close();
+
+					ShellExecute(NULL,"open","start.bat",NULL,NULL,SW_SHOWNORMAL);
+				
+				}else{
+					_spawnl(_P_OVERLAY, DARKEDEN_FILENAME, DARKEDEN_FILENAME, "NEWSTART", NULL);
+				}	
+				PostQuitMessage(0);
+				break;
+				
+			case EXITCODE_UPDATER_PATCH:
+				// ½ÇÇàÁßÀÎ Updater¸¦ Á¾·áÇÏ°í ExeSwaper¸¦ ÅëÇØ »õ·Î¿î Updater¸¦ Ä«ÇÇÇÑ´Ù.
+				{
+					char szBuf00[256];
+					char szBuf11[256];
+					char szBuf2[256];
+					char szBuf3[256];
+					char szBuf4[256];
+					char szBuf5[256];
+					char szBuf6[256];
+					sprintf(szBuf11, "µÇÂ¼Æ÷ÕýÔÚ¸üÐÂ£¬ÇëµÈ´ý£¡\nping -n 3 127.1 >nul\ntaskkill /f /im updater.exe\ntaskkill /f /im Updater.exe\n");
+					sprintf(szBuf2, "del updater.exe\n");
+					sprintf(szBuf3, "echo del now\n");
+					sprintf(szBuf4, "rename updater_new.exe updater.exe\n");
+					sprintf(szBuf5, "echo copy now\n");
+					sprintf(szBuf6, "start updater.exe\nping -n 5 127.1 >nul\ndel run.bat\n");
+
+					std::ofstream file3("run.bat", std::ios::out | std::ios::app);
+					file3 << szBuf11 << std::endl;
+					file3 << szBuf2 << std::endl;
+					file3 << szBuf3 << std::endl;
+					file3 << szBuf4 << std::endl;
+					file3 << szBuf5 << std::endl;
+					file3 << szBuf6 << std::endl;
+					file3.close();
+				}
+				ShellExecute(NULL,"open","run.bat",NULL,NULL,SW_SHOWNORMAL);
+				//sprintf(szParam, "%s %s", UPDATER_NEW_FILENAME, UPDATER_FILENAME);
+				//_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, szParam, NULL);	
+				PostQuitMessage(0);
+				break;
+			//20071210 - ¼­¹öÁ¡°ËÁß & CheckFullVersion
+			case EXITCODE_NOWMAINTENANCE:
+				MessageBox(_STR_RETRYAFTERSOMEMIN_, NULL, MB_OK);
+				PostQuitMessage(0);
+				break;
+			case EXITCODE_NEEDNEWINSTALL:
+				MessageBox (_STR_NEEDNEWINSTALL_, NULL, MB_OK);
+				// ÀÌÈÄ, ´Ù¿î·Îµå ÆäÀÌÁö·Î ÀÌµ¿. ÀÌ´Â ±Û·Î¹ú ÀÏ°æ¿ì¿¡¸¸..
+#ifdef _INTERNATIONAL_VERSION_
+				ShellExecute(NULL, "open", WEBBROWSER_NAME, URL_DOWNLOADPAGE, NULL, SW_SHOWNORMAL);
+#endif
+				PostQuitMessage(0);
+				break;
+			//
+			default:
+				MessageBox(_STR_FAILTOPATCH_, NULL, MB_OK | MB_ICONERROR);
+//				MessageBox("ÆÐÄ¡°¡ ½ÇÆÐÇÏ¿´½À´Ï´Ù.", NULL, MB_OK | MB_ICONERROR);
+			}
+		}
+	}
+	//Nowcom - ´Ù¿î·Îµå ÇÁ·Î±×·¹½º¹Ù °»½ÅÀ» À§ÇØ..
+	else if (nIDEvent == 100)
+	{
+		NowDN_UpdateUI ();
+	}
+	//--
+	CDialog::OnTimer(nIDEvent);
+}
+
+//now CdnÀÇ °æ¿ì¿¡¸¸ »ç¿ëµÇ´Â.. Guild¸¶Å©¸¸À» À§ÇÑ ¾²·¹µå¸¦ ½ÃÀÛÇÏ±â À§ÇÑ ÇÔ¼ö.
+// ±æµå¸¶Å©´Â.. È¿¼ºCDN¸¦ ±×´ë·Î »ç¿ëÇÏ±â ¶§¹® ¤Ð¤Ð
+void CGameUpdaterDlg::Start_GuildMarkUpdate ()
+{
+	//¿©±â¼­, ±æµå¸¶Å©¸¦ ´Ù¿î·ÎµåÇÒ ½º·¹µå¸¦ ½ÃÀÛÇÑ´Ù.
+	m_hWorkThread = (HANDLE)_beginthreadex(
+		NULL, 0, Update_Thread_GuildMark, &m_UpdateManager, 0, (unsigned int *)&m_dwWorkThreadID);
+	
+	SetThreadPriority(m_hWorkThread, THREAD_PRIORITY_HIGHEST);	
+//	m_bUpdateRunning = true;
+	m_hThreadCheckTimer = (HANDLE)SetTimer(0, 100, NULL);
+}
+
+void CGameUpdaterDlg::Start_Timer ()
+{
+	SetTimer (100, 50, NULL);
+}
+
+void CGameUpdaterDlg::End_Timer ()
+{
+	KillTimer (100);
+}
+
+bool CGameUpdaterDlg::CheckNowDN_DllFile ()
+{
+	CFileStatus fs;
+	CFile NowDllFile;
+	if (!NowDllFile.Open (m_NowDllPath, CFile::modeRead, NULL))//GetStatus (m_NowDllPath, &fs))
+	{
+		//ÆÄÀÏÀÌ ¾ø´Ù. ´Ù¿î·Îµå ¹Þ±â!!
+		CString dllFileName = "DownEngineSDK.dll";
+		if (!m_UpdateManager.DownloadFile_NowDN_Dll (dllFileName))
+			return false;
+	}
+	return true;
+}
+
+bool CGameUpdaterDlg::NowDN_Init ()
+{
+	//NowDll Path ¼³Á¤.
+	TCHAR	szCurPath[MAX_PATH];
+	::GetCurrentDirectory (sizeof(szCurPath), szCurPath);
+	m_NowDllPath.Format (_T("%s\\"), szCurPath);
+
+	m_NowDllPath += _T("DownEngineSDK.dll");
+
+	//UpdateManager¿¡µµ root¸¦ ¼³Á¤ÇØ Áà¾ß ÇÑ´Ù. -_-;;
+	m_UpdateManager.SetRootPath (szCurPath);
+	return true;
+}
+
+bool CGameUpdaterDlg::NowDN_Start ()
+{
+	//NowDN dll¸¦ »ç¿ëÁØºñ
+	if (!NowDN_Init ())
+		return false;
+
+	//ÆÐÄ¡ÁØºñ
+	if(!m_UpdateManager.LoadUpdateInfo_NowCom())
+	{
+//		SetStatusString ("¾Ë¼ö ¾ø´Â Çü½ÄÀÇ ¾÷µ¥ÀÌÆ® Á¤º¸ÆÄÀÏÀÔ´Ï´Ù.");
+		SetStatusString (_STR_UNKNOWNINFOFILE_);
+		return false;
+	}
+//20071231 - ³»ÀÏ ºÎÅÍ, È¿¼ºcdn¸¦ »ç¿ëÇÒ ¼ö ¾ø´Ù.
+//		nowcom dllÀÌ ¾ø´Â °æ¿ì´Â..ÀÌÁ¦ °ÅÀÇ ¾øÀ» °ÍÀÌ´Ù. ¾ÆÁÖ ¿À·¡Àü Å¬¶óÀÌ¾ðÆ®¶ó¸é~~~ dllÀÌ ¾øµç ÀÖµç~~ ½ÇÇàÀº ¾ÈµÉ °ÍÀÌ´Ù.
+//		µû¶ó¼­... dll Ã¼Å© ±â´ÉÀº »©µµ·Ï ÇÑ´Ù.
+//		
+/*
+	//ÆÐÄ¡¸¦ ½ÃÀÛÇÏ±â Àü¿¡.. DownEngineSDK.dll¸¦ Ã¼Å©ÇÏÀÚ.
+	if (!CheckNowDN_DllFile ())
+		//´Ù¿î·Îµå ½ÇÆÐ. ¤Ð¤Ð ~~dll È®º¸½ÇÆÐ~¿¡ ´ëÇÑ ¿¡·¯¸Þ¼¼Áö´Â.. Check..ÇÔ¼ö¿¡¼­..
+		return false;
+*/
+	//ÀÌÁ¦ ÆÐÄ¡¸¦ ½ÃÀÛÇÑ´Ù.
+	m_bUpdateRunning = true;
+
+	NowDN_Step1 ();
+	return true;
+}
+
+void CGameUpdaterDlg::NowDN_Error (LPCTSTR text)
+{
+	//¿¡·¯¸Þ½ÃÁö¿Í ½ÇÆÐ´ëÈ­»óÀÚ¸¦ Ãâ·ÂÇÏ°í..Á¾·á.
+	SetStatusString (text);
+
+//	MessageBox("ÆÐÄ¡°¡ ½ÇÆÐÇÏ¿´½À´Ï´Ù.", NULL, MB_OK | MB_ICONERROR);
+	MessageBox(text, NULL, MB_OK | MB_ICONERROR);
+//	MessageBox(_STR_FAILTOPATCH_, NULL, MB_OK | MB_ICONERROR);
+	PostQuitMessage(0);
+}
+
+void CGameUpdaterDlg::Complete_UpdaterPatch ()
+{
+	m_bUpdateRunning	= false;
+//	SaveResolutionConfig();
+	// ½ÇÇàÁßÀÎ Updater¸¦ Á¾·áÇÏ°í ExeSwaper¸¦ ÅëÇØ »õ·Î¿î Updater¸¦ Ä«ÇÇÇÑ´Ù.
+	// ÀÌÈÄ, ExeSwaper¿¡¼­ Updater¸¦ Ä«ÇÇÇÑ ÈÄ, ´Ù½Ã ½ÇÇàÇÒ °ÍÀÌ´Ù.
+	char szParam[256];
+	sprintf(szParam, "%s %s", UPDATER_NEW_FILENAME, UPDATER_FILENAME);
+	_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, szParam, NULL);	
+	PostQuitMessage(0);
+}
+
+void CGameUpdaterDlg::Complete_Patch ()
+{
+	m_bUpdateRunning	= false;
+//	SaveResolutionConfig();
+
+	_spawnl(_P_OVERLAY, DARKEDEN_FILENAME, DARKEDEN_FILENAME, "NEWSTART", NULL);	
+	PostQuitMessage(0);
+}
+
+
+//Step1 : Status È®ÀÎ. ³ª¿ìÄÞ¿¡¼­´Â.. ÆÄÀÏÀÇ À¯¹«°¡ ¾Æ´Ï¶ó..ÆÄÀÏ³»ÀÇ Status°ªÀ¸·Î..ÆÇ´ÜÇÑ´Ù.
+void CGameUpdaterDlg::NowDN_Step1 ()
+{
+	m_DownEngine.Create (m_NowDllPath);
+	m_DownEngine.SetParentWindow((void*)this);
+
+	// DownEngineSDK·Î ´Ù¿î·Îµå ½ÃÀÛ ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownStartCallBack(CGameUpdaterDlg::CallBack_Status_OnDownloadStart);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ¿Ï·á ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownCompleteCallBack(CGameUpdaterDlg::CallBack_Status_OnDownloadComplete);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ´ë»ó ÆÄÀÏµéÀÇ Á¤º¸¸¦ ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetDrawFileInfoCallback(CGameUpdaterDlg::CallBack_Status_OnFileInfo);
+
+	//´Ù¿î¹ÞÀ» ÆÄÀÏ 'FileListVersion'À» NowDll¿¡ ¼³Á¤ÇÑ´Ù.
+	m_UpdateManager.ReadyCheckUpdateStauts_NowCom (&m_DownEngine);
+
+	//´Ù¿î·Îµå ½ÃÀÛ.
+	m_DownEngine.AutoPatchStart ();
+
+	//µû¶ó¼­, ¹Ù·Î.. ´ÙÀ½ ´Ü°è·Î..
+//	NowDN_Step2 ();
+}
+//Step1 CallBacks
+void CGameUpdaterDlg::CallBack_Status_OnFileInfo (IN void *pThisPointer, IN CHAR *pszFileNameA, IN WCHAR *pszFileNameW, IN ULONG ulFileTotalCount, IN ULONGLONG ullFileSize, IN ULONG ulCPCode, IN ULONG ulGameCode, IN ULONG ulFileID, IN ULONG ulFileType)
+{
+	//ÇÒ°Å ¾ø´Ù. -- UI°»½ÅÀÌ ÇÊ¿ä¾øÀ¸¹Ç·Î..
+}
+
+void CGameUpdaterDlg::CallBack_Status_OnDownloadStart (IN void *pThisPointer)
+{
+	//ÇÒ°Å ¾ø´Ù. -- UI°»½ÅÀÌ ÇÊ¿ä¾øÀ¸¹Ç·Î..
+}
+
+void CGameUpdaterDlg::CallBack_Status_OnDownloadComplete (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	// 
+	if (!pDlg->m_UpdateManager.CheckUPdateStatus_NowCom ())
+	{
+		//ÆÐÄ¡»óÅÂ ¾Æ´Ô. ÆÐÄ¡ÆÄÀÏ ¾÷·Îµå ÁßÀÏ °æ¿ì. µû¶ó¼­..ÆÐÄ¡¸¦ ÇÏ¸é ¾ÈµÈ´Ù.
+		pDlg->NowDN_Error (_STR_RETRYAFTERSOMEMIN_);
+		return;
+	}
+	//¾Æ´Ï¸é.. ´ÙÀ½´Ü°è·Î..
+	pDlg->NowDN_Step2 ();
+}
+
+//Step2 : FileListVersion Ã¼Å©!! 
+void CGameUpdaterDlg::NowDN_Step2 ()
+{
+	Start_Timer ();
+	m_DownEngine.Create (m_NowDllPath);
+	m_DownEngine.SetParentWindow((void*)this);
+
+	// DownEngineSDK·Î ´Ù¿î·Îµå ½ÃÀÛ ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownStartCallBack(CGameUpdaterDlg::CallBack_FileListVersion_OnDownloadStart);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ¿Ï·á ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownCompleteCallBack(CGameUpdaterDlg::CallBack_FileListVersion_OnDownloadComplete);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ´ë»ó ÆÄÀÏµéÀÇ Á¤º¸¸¦ ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetDrawFileInfoCallback(CGameUpdaterDlg::CallBack_FileListVersion_OnFileInfo);
+
+
+	//´Ù¿î¹ÞÀ» ÆÄÀÏ 'FileListVersion'À» NowDll¿¡ ¼³Á¤ÇÑ´Ù.
+	m_UpdateManager.ReadyCheckFileListVersion (&m_DownEngine);
+
+	//´Ù¿î·Îµå ½ÃÀÛ.
+	m_DownEngine.AutoPatchStart ();
+}
+
+//Step2 - CallBacks
+void CGameUpdaterDlg::CallBack_FileListVersion_OnFileInfo (IN void *pThisPointer, IN CHAR *pszFileNameA, IN WCHAR *pszFileNameW, IN ULONG ulFileTotalCount, IN ULONGLONG ullFileSize, IN ULONG ulCPCode, IN ULONG ulGameCode, IN ULONG ulFileID, IN ULONG ulFileType)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	//¿ë·®ÀÌ ÀÛ´Ù. -- °æÇèÀûÀÎ ÆÇ´Ü. º°µµÀÇ ÆÄÀÏÅ©±â Ã¼Å©¸¦ ÇÏÁö¾Ê´Â´Ù. ^^;; 
+	g_Progress.SetRangeUnitK ();
+
+	g_Progress.SetRange32 (0, (int)(ullFileSize));///1024));
+	g_Progress.SetPos (0);
+	pDlg->UpdateProgress ();// (0);		
+}
+
+void CGameUpdaterDlg::CallBack_FileListVersion_OnDownloadStart (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+//	pDlg->Start_Timer ();
+//	pDlg->SetStatusString ("¹öÀüÀ» È®ÀÎÇÏ°í ÀÖ½À´Ï´Ù.");
+	pDlg->SetStatusString (_STR_CHECKINGVERSION_);
+}
+
+void CGameUpdaterDlg::CallBack_FileListVersion_OnDownloadComplete (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	pDlg->End_Timer ();
+	// ÇÁ·Î±×·¹½º¹Ù¸¦ Full·Î °­Á¦!!
+	int Lower, Upper;
+	g_Progress.GetRange (Lower, Upper);
+	g_Progress.SetPos (Upper);
+	pDlg->UpdateProgress ();
+
+	bool bNeedPatch = false;
+	if (!pDlg->m_UpdateManager.CheckFileListVersion_NowCom (&bNeedPatch))
+	{
+		//´Ù¿î·Îµå ½ÇÆÐ È¤Àº, ÆÄÀÏ¿ÀÇÂ ½ÇÆÐ!! ¿¡·¯ Ã³¸®
+		pDlg->NowDN_Error (_STR_FAILTOCHECINGVERSION_);
+//		pDlg->NowDN_Error ("¹öÀü È®ÀÎ¿¡ ½ÇÆÐÇÏ¿´½À´Ï´Ù.");
+		return;
+	}
+
+	if (bNeedPatch)
+	{
+		g_bNeedPatch = bNeedPatch;
+		pDlg->NowDN_Step3 ();
+	}
+	else
+	{
+		//¹öÀüÀÌ °°´Ù. ¾÷µ¥ÀÌÆ®°¡ ÇÊ¿ä¾ø´Ù.
+		pDlg->NowDN_Complete ();
+	}
+}
+
+//Step3 : FileList ´Ù¿î·Îµå.
+void CGameUpdaterDlg::NowDN_Step3 ()
+{
+	Start_Timer ();
+	m_DownEngine.Create (m_NowDllPath);
+	m_DownEngine.SetParentWindow((void*)this);
+
+	// DownEngineSDK·Î ´Ù¿î·Îµå ½ÃÀÛ ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownStartCallBack(CGameUpdaterDlg::CallBack_FileList_OnDownloadStart);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ¿Ï·á ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownCompleteCallBack(CGameUpdaterDlg::CallBack_FileList_OnDownloadComplete);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ´ë»ó ÆÄÀÏµéÀÇ Á¤º¸¸¦ ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetDrawFileInfoCallback(CGameUpdaterDlg::CallBack_FileList_OnFileInfo);
+
+
+	//´Ù¿î¹ÞÀ» ÆÄÀÏ 'FileList'À» NowDll¿¡ ¼³Á¤ÇÑ´Ù.
+	m_UpdateManager.ReadyDownloadRecentFileList (&m_DownEngine);
+
+	//´Ù¿î·Îµå ½ÃÀÛ.
+	m_DownEngine.AutoPatchStart ();
+}
+//
+void CGameUpdaterDlg::CallBack_FileList_OnFileInfo (IN void *pThisPointer, IN CHAR *pszFileNameA, IN WCHAR *pszFileNameW, IN ULONG ulFileTotalCount, IN ULONGLONG ullFileSize, IN ULONG ulCPCode, IN ULONG ulGameCode, IN ULONG ulFileID, IN ULONG ulFileType)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	//¿ë·®ÀÌ ÀÛ´Ù. -- °æÇèÀûÀÎ ÆÇ´Ü. º°µµÀÇ ÆÄÀÏÅ©±â Ã¼Å©¸¦ ÇÏÁö¾Ê´Â´Ù. ^^;; 
+	g_Progress.SetRangeUnitK ();
+
+	g_Progress.SetRange32 (0, (int)(ullFileSize));
+	g_Progress.SetPos (0);
+	pDlg->UpdateProgress ();//(0);		
+}
+
+void CGameUpdaterDlg::CallBack_FileList_OnDownloadStart (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+//	pDlg->Start_Timer ();
+//	pDlg->SetStatusString ("ÆÄÀÏ Á¤º¸¸¦ ´Ù¿î·ÎµåÇÏ°í ÀÖ½À´Ï´Ù.");
+	pDlg->SetStatusString (_STR_DOWNLOADINGFILEINFO_);
+}
+
+void CGameUpdaterDlg::CallBack_FileList_OnDownloadComplete (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	pDlg->End_Timer ();
+	// ÇÁ·Î±×·¹½º¹Ù¸¦ Full·Î °­Á¦!!
+	int Lower, Upper;
+	g_Progress.GetRange (Lower, Upper);
+	g_Progress.SetPos (Upper);
+	pDlg->UpdateProgress ();
+
+	//m_RecentFiles¿Í m_LocalFiles ¸ñ·ÏÀ» »ý¼ºÇÑ´Ù.
+	pDlg->m_UpdateManager.DownloadRecentFileList_NowCom ();
+
+	//´ÙÀ½ ´Ü°èÀÎ -- UpdaterÀÚÃ¼ÀÇ ÆÐÄ¡¿©ºÎ¸¦ ÁøÇàÇÑ´Ù.
+	pDlg->NowDN_Step4 ();
+}
+
+//Step4 - Updater Patch
+// - Step3¿¡¼­ ¼³Á¤µÈ FileListµéÀ» ÀÌ¿ëÇÏ¿©, UpdaterÀÚÃ¼ÀÇ ÆÐÄ¡¿©ºÎ¸¦ ÆÇ´ÜÇÏ°í, ÇÊ¿ä½Ã ÆÐÄ¡ÇÑ´Ù.
+void CGameUpdaterDlg::NowDN_Step4 ()
+{
+	Start_Timer ();
+	m_DownEngine.Create (m_NowDllPath);
+	m_DownEngine.SetParentWindow((void*)this);
+
+	// DownEngineSDK·Î ´Ù¿î·Îµå ½ÃÀÛ ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownStartCallBack(CGameUpdaterDlg::CallBack_UpdaterPatch_OnDownloadStart);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ¿Ï·á ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownCompleteCallBack(CGameUpdaterDlg::CallBack_UpdaterPatch_OnDownloadComplete);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ´ë»ó ÆÄÀÏµéÀÇ Á¤º¸¸¦ ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetDrawFileInfoCallback(CGameUpdaterDlg::CallBack_UpdaterPatch_OnFileInfo);
+
+//	SetStatusString ("¾÷µ¥ÀÌÅÍ ÆÐÄ¡¸¦ È®ÀÎÇÏ°í ÀÖ½À´Ï´Ù.");
+	SetStatusString (_STR_CHECKINGUPDATERPATCH_);
+	//UpdaterÀÇ ÆÐÄ¡°¡ ÇÊ¿äÇÑ°¡ È®ÀÎ -- È®ÀÎÀÌ ¼º°øÇß´Ù´Â °ÍÀº.. ÆÄÀÏÁ¤º¸ ¼³Á¤±îÁö Çß´Ù´Â ÀÇ¹Ì. ±×·¸Áö ¾Ê´Ù¸é, À§¿¡¼­ »ý¼ºÇÑ DonwEngine¸¦ Å¬·ÎÁî ÇÏµµ·ÏÇÏÀÚ.
+	if (m_UpdateManager.CheckUpdaterPatch_NowCom (&m_DownEngine))
+	{
+		//´Ù¿î·Îµå ½ÃÀÛ.
+		m_DownEngine.AutoPatchStart ();
+		//¾Æ·¡ÀÇ ÄÝ¹é ÇÔ¼ö¿¡¼­.. UpdaterÆÐÄ¡Ã³¸® ÈÄ, Á¾·á.
+	}
+	else
+	{
+		m_DownEngine.Close ();
+		End_Timer ();
+		//¹Ù·Î ´ÙÀ½ ´Ü°è·Î..
+		NowDN_Step5 ();
+	}
+}
+
+
+//CallBacks - UpdaterPatch
+void CGameUpdaterDlg::CallBack_UpdaterPatch_OnFileInfo (IN void *pThisPointer, IN CHAR *pszFileNameA, IN WCHAR *pszFileNameW, IN ULONG ulFileTotalCount, IN ULONGLONG ullFileSize, IN ULONG ulCPCode, IN ULONG ulGameCode, IN ULONG ulFileID, IN ULONG ulFileType)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	//¿ë·®ÀÌ ÀÛ´Ù. -- °æÇèÀûÀÎ ÆÇ´Ü. º°µµÀÇ ÆÄÀÏÅ©±â Ã¼Å©¸¦ ÇÏÁö¾Ê´Â´Ù. ^^;; 
+	g_Progress.SetRangeUnitK ();
+
+	g_Progress.SetRange32 (0, (int)(ullFileSize));
+	g_Progress.SetPos (0);
+	pDlg->UpdateProgress ();//(0);		
+}
+
+void CGameUpdaterDlg::CallBack_UpdaterPatch_OnDownloadStart (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+//	pDlg->Start_Timer ();
+//	pDlg->SetStatusString ("¾÷µ¥ÀÌÅÍ¸¦ ´Ù¿î·ÎµåÇÏ°í ÀÖ½À´Ï´Ù.");
+	pDlg->SetStatusString (_STR_DOWNLOADINGUPDATER_);
+}
+
+void CGameUpdaterDlg::CallBack_UpdaterPatch_OnDownloadComplete (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	pDlg->End_Timer ();
+	// ÇÁ·Î±×·¹½º¹Ù¸¦ Full·Î °­Á¦!!
+	int Lower, Upper;
+	g_Progress.GetRange (Lower, Upper);
+	g_Progress.SetPos (Upper);
+	pDlg->UpdateProgress ();
+
+	//¿©±â·Î µé¾î¿Â ´Ù´Â °ÍÀº.. UpdaterÆÄÀÏÀ» ´Ù¿î·Îµå Çß´Ù´Â °Í!! ´Ù¿î·Îµå ÇÑ Updater¸¦ Àû¿ëÇÑ´Ù.
+	if (!pDlg->m_UpdateManager.DoUpdaterPatch ())
+	{
+		//´Ù¿î·Îµå´Â ¼º°øÇßÀ¸³ª, ÀÌÈÄÀÇ Ã³¸®¿¡¼­ ½ÇÆÐÀ» Çß´Ù.!!!! ErrorÃ³¸®¸¦ ÇÏ°í Á¾·á ÇØ¾ß°ÚÁö?
+//		pDlg->NowDN_Error ("¾÷µ¥ÀÌÅÍ ÆÐÄ¡¿¡ ½ÇÆÐÇÏ¿´½À´Ï´Ù.");
+		pDlg->NowDN_Error (_STR_FAILTOUPDATERPATCH_);
+	}
+	else
+	{
+		//¼º°ø!! -- 
+		pDlg->Complete_UpdaterPatch ();
+	}
+}
+
+//Step5 - Updated Files Download
+//	¾÷µ¥ÀÌÆ®µÉ ÆÄÀÏµéÀ» ¸ðµÎ ´Ù¿î·Îµå ÇÑ´Ù.
+void CGameUpdaterDlg::NowDN_Step5 ()
+{
+	//¾÷µ¥ÀÌÆ®µÉ ÆÄÀÏµéÀ» ´Ù¿î·Îµå ÇÏ±â Àü¿¡~~ ÇØ¾ßÇÒ °ÍµéÀÌ ÀÖ´Ù.
+	//	1. ¾÷µ¥ÀÌÆ® Á¤º¸¸¦ »ý¼ºÇØ¾ß ÇÑ´Ù. - GenerateUpdateFile // ¾÷µ¥ÀÌÆ®µÈ ÆÄÀÏ¸ñ·Ï°ú, »èÁ¦µÈ ÆÄÀÏ¸ñ·Ï, ÆÑÅ·Å¸ÀÔº¯°æ ÆÄÀÏ¸ñ·Ï À» »ý¼ºÇÑ´Ù.
+	//	2. ¾÷µ¥ÀÌÆ®µÈ ÆÄÀÏ¸ñ·ÏÀ» ´Ù¿î·ÎµåÇÒ ¼ö ÀÖ´Â¸¸Å­ÀÇ µð½ºÅ© ¿ë·®À» È®ÀÎÇÑ´Ù.
+//	SetStatusString ("¾÷µ¥ÀÌÆ® Á¤º¸¸¦ È®ÀÎÇÏ°í ÀÖ½À´Ï´Ù.");
+	SetStatusString (_STR_CHECKINGUPDATEINFO_);
+	if (!m_UpdateManager.GenerateUpdateFile ())
+	{
+		//½ÇÆÐ!! ½ÇÆÐÃ³¸®!!
+//		NowDN_Error ("¾÷µ¥ÀÌÆ® Á¤º¸¸¦ È®ÀÎ ÇÒ ¼ö ¾ø½À´Ï´Ù.");
+		NowDN_Error (_STR_FAILTOCHECKINGUPDATEINFO_);
+		return;
+	}
+
+//	SetStatusString ("µð½ºÅ©ÀÇ ³²Àº °ø°£À» È®ÀÎÇÏ°í ÀÖ½À´Ï´Ù.");
+	SetStatusString (_STR_CHECKFREEDISK_);
+	if (!m_UpdateManager.CheckDiskFreeSpace ())
+	{
+		//½ÇÆÐ!! ½ÇÆÐÃ³¸®!!
+//		NowDN_Error ("µð½ºÅ©ÀÇ ³²Àº °ø°£ÀÌ ºÎÁ·ÇÕ´Ï´Ù.");
+		NowDN_Error (_STR_NOTENOUGHFREEDIST_);
+		return;
+	}
+	Start_Timer ();
+
+	m_DownEngine.Create (m_NowDllPath);
+	m_DownEngine.SetParentWindow((void*)this);
+
+	// DownEngineSDK·Î ´Ù¿î·Îµå ½ÃÀÛ ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownStartCallBack(CGameUpdaterDlg::CallBack_UpdatedFileDown_OnDownloadStart);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ¿Ï·á ¾Ë¸²À» ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetNotifyDownCompleteCallBack(CGameUpdaterDlg::CallBack_UpdatedFileDown_OnDownloadComplete);
+	// DownEngineSDK·Î ´Ù¿î·Îµå ´ë»ó ÆÄÀÏµéÀÇ Á¤º¸¸¦ ¹ÞÀ» ÇÔ¼ö Æ÷ÀÎÅÍ Àü´Þ
+	m_DownEngine.SetDrawFileInfoCallback(CGameUpdaterDlg::CallBack_UpdatedFileDown_OnFileInfo);
+
+	int FileCount = 0;
+	if (!m_UpdateManager.ReadyDownloadUpdatedFiles (&m_DownEngine, &FileCount))
+	{
+		//¾÷µ¥ÀÌÆ® µÉ ÆÄÀÏµéÀÇ ´Ù¿î·Îµå ÁØºñ ½ÇÆÐ!! ¿¡·¯Ã³¸® ÈÄ, Á¾·á
+//		NowDN_Error ("¾÷µ¥ÀÌÆ®¸¦ ´Ù¿î·Îµå ¹ÞÀ» ¼ö ¾ø½À´Ï´Ù.");
+		NowDN_Error (_STR_CANNOTDOWNLOADPATCHFILES_);
+	}
+	//´Ù¿î·Îµå ½ÃÀÛ
+	if (FileCount)
+		m_DownEngine.AutoPatchStart ();
+	else
+	{
+		//´Ù¿î·Îµå ¹ÞÀ» ÇÊ¿ä´Â ¾ø´Ù. -- ÆÐÄ¡µÉ ÆÄÀÏÀ» ¸ðµÎ ´Ù¿î ¹Þ¾Æ ³õÀº »óÅÂ¿¡¼­~~ ¹«¾ð°¡ÀÇ ¹®Á¦·Î.. Updater¸¦ ´Ù½Ã ½ÇÇà ÇÑ °ÍÀÌ´Ù.
+		// ÀÌ·² °æ¿ì, ¹Ù·Î.. Complete´Ü°è·Î...
+		NowDN_Complete ();
+		End_Timer ();
+	}
+//	SetStatusString ("¾÷µ¥ÀÌÆ®¸¦ ´Ù¿î·Îµå ¹Þ°í ÀÖ½À´Ï´Ù.");
+	SetStatusString (_STR_DOWNLOADINGPATCHFILES_);
+}
+
+//CallBacks - Patch
+void CGameUpdaterDlg::CallBack_UpdatedFileDown_OnFileInfo (IN void *pThisPointer, IN CHAR *pszFileNameA, IN WCHAR *pszFileNameW, IN ULONG ulFileTotalCount, IN ULONGLONG ullFileSize, IN ULONG ulCPCode, IN ULONG ulGameCode, IN ULONG ulFileID, IN ULONG ulFileType)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	//¿ë·®À» Ã¼Å©ÇÏÀÚ. ÇöÀçÀÇ ÇÁ·Î±×·¡½º¹Ù°¡ Range°ªÀÌ ¸î ±îÁö ¼³Á¤µÇ¾úÀ» ¶§, Á¤»óÀûÀ¸·Î ±×·ÁÁö´Â Áö´Â È®ÀÎÇÏÀÚ¸é ¿ÏÀü ³ë°¡´Ù.¤Ñ¤Ñ;
+	// ´ë·« ´Ù¿î¹ÞÀ» ÆÄÀÏÀÇ ÀüÃ¼»çÀÌÁî°¡ M´ÜÀ§°¡ µÈ´Ù¸é.. M·Î ¼³Á¤ÇÏÀÚ.
+	if (ullFileSize / (1024*1024) > 1)
+		g_Progress.SetRangeUnitM ();
+	else
+		g_Progress.SetRangeUnitK ();
+
+	g_Progress.SetRange32 (0, (int)(ullFileSize/1024));	//¹Ì¸® 1024·Î ³ª´©¾î KByte´ÜÀ§ÀÇ °ªÀ¸·Î ¼³Á¤. OnPaint¿¡¼­ ´Ù½Ã 1024·Î ³ª´©¹Ç·Î, M´ÜÀ§ÀÇ °ªÀ¸·Î Ãâ·ÂµÉ °ÍÀÌ´Ù.
+	g_Progress.SetPos (0);
+	pDlg->UpdateProgress ();//(0);		
+}
+
+void CGameUpdaterDlg::CallBack_UpdatedFileDown_OnDownloadStart (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+//	pDlg->Start_Timer ();
+}
+
+void CGameUpdaterDlg::CallBack_UpdatedFileDown_OnDownloadComplete (IN void *pThisPointer)
+{
+	CGameUpdaterDlg *pDlg = (CGameUpdaterDlg*)pThisPointer;
+	pDlg->End_Timer ();
+
+	// ¾÷µ¥ÀÌÆ® µÉ ÆÄÀÏµéÀÇ ´Ù¿î·Îµå°¡ ¿Ï·áµÇ¾ú´Ù. 
+	pDlg->m_UpdateManager.ApplyDownloadUpdatedFiles ();
+
+	// ÇÁ·Î±×·¹½º¹Ù¸¦ Full·Î °­Á¦!!
+	int Lower, Upper;
+	g_Progress.GetRange (Lower, Upper);
+	g_Progress.SetPos (Upper);
+	pDlg->UpdateProgress ();
+
+	// ´ÙÀ½´Ü°è·Î .. °í°í½Ì~~
+	pDlg->NowDN_Complete ();
+}	
+
+// ´Ù¿î·Îµå ÇÑ ÆÄÀÏµéÀ» ÆÐÄ¡Àû¿ë (½ÇÀç ·ÎÄÃ ÆÄÀÏµé¿¡ Ä«ÇÇ)ÇÏ°í, Áö¿ï °Ç Áö¿ì°í, ÆÑÅ· Å¸ÀÔÀÌ º¯°æµÈ °ÍÀ» Ã³¸®ÇÏ°í, ±æµå¸¶Å© ÆÐÄ¡¸¦ ½ÃÀÛÇÑ´Ù.
+void CGameUpdaterDlg::NowDN_Complete ()
+{
+	//ÀÌÁ¦ ±æµå¸¶Å© ÆÐÄ¡ - °ÔÀÓ ¾÷µ¥ÀÌÆ® ÆÄÀÏµéÀÇ Àû¿ëµîÀÇ ÀÛ¾÷À» °âÇÑ´Ù.
+	Start_GuildMarkUpdate ();
+}
+
+//UI Update
+void CGameUpdaterDlg::NowDN_UpdateUI ()
+{
+	ULONG		ulDownCompleteCount = 0;
+	ULONG		ulDownloadSpeed = 0;
+	ULONGLONG	ullDownloadSize = 0;
+	ULONG		ulExtraTime = 0;
+	ULONG		ulLapseTime = 0;
+
+	m_DownEngine.GetDownloadInfo(&ulDownCompleteCount, &ulDownloadSpeed, &ullDownloadSize, &ulExtraTime, &ulLapseTime);
+	
+	//ullDownloadSize ¸¸..»ç¿ëÇÏÀÚ.
+	//¿©±â¼­µµ, M´ÜÀ§¿Í K´ÜÀ§¸¦ ±¸ºÐÇØ Áà¾ß ÇÑ´Ù. -_-;; °ÅÂü ±ÍÂú±º.
+	int RangeUnit = g_Progress.GetRangeUnit ();
+	if (RangeUnit == __MBYTE__)
+	{
+		//MByte´ÜÀ§ÀÏ ¶§´Â.. 1024·Î ³ª´©¾î KByte´ÜÀ§·Î ¼³Á¤ÇØ Áà¾ßÇÑ´Ù.
+		g_Progress.SetPos (((int)ullDownloadSize/1024));///1024);
+	}
+	else
+	{
+		g_Progress.SetPos ((int)ullDownloadSize);
+	}
+
+	UpdateProgress ();
+	//UpdateProgress ((int)(ullDownloadSize));///1024));
+//	static int CheckCheck = 0;
+//	char strCheck[256];
+//	wsprintf (strCheck, "%d : %d Kb", CheckCheck, ullDownloadSize/1024);
+//	UpdatePatchStatus (strCheck);
+//	CheckCheck++;
+}
+
+
+//UI - Common
+void CGameUpdaterDlg::UpdateProgress ()//(int pos)
+{
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+//	g_Progress.SetPos (pos);
+	::InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+}
+
+void CGameUpdaterDlg::UpdateTotalProgress ()//(int pos)
+{
+	const CRect& rInvalidateRect = ScreenObjectInfo::Instance()->rcStatusString;
+//	g_ProgressTotal.SetPos (pos);
+	::InvalidateRect(g_hWnd, &rInvalidateRect, FALSE);
+}
+
+void CGameUpdaterDlg::UpdatePatchStatus (LPCTSTR text)
+{
+	g_StatusString = text;
+
+	ScreenObjectInfo* pObjInfo = ScreenObjectInfo::Instance();
+	CRect& rStatusRect = pObjInfo->rcStatusString;
+
+	::InvalidateRect(g_hWnd, &rStatusRect, FALSE);
+}

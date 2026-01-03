@@ -1,0 +1,52 @@
+// ClientInfo.h : main header file for the CLIENTINFO application
+//
+
+#if !defined(AFX_CLIENTINFO_H__F2494A85_B987_11D4_8E50_00105A69FD52__INCLUDED_)
+#define AFX_CLIENTINFO_H__F2494A85_B987_11D4_8E50_00105A69FD52__INCLUDED_
+
+#if _MSC_VER > 1000
+#pragma once
+#endif // _MSC_VER > 1000
+
+#ifndef __AFXWIN_H__
+	#error include 'stdafx.h' before including this file for PCH
+#endif
+
+#include "resource.h"       // main symbols
+
+/////////////////////////////////////////////////////////////////////////////
+// CClientInfoApp:
+// See ClientInfo.cpp for the implementation of this class
+//
+
+class CClientInfoApp : public CWinApp
+{
+public:
+	CClientInfoApp();
+	~CClientInfoApp();
+
+// Overrides
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CClientInfoApp)
+	public:
+	virtual BOOL InitInstance();
+	//}}AFX_VIRTUAL
+
+// Implementation
+
+public:
+	//{{AFX_MSG(CClientInfoApp)
+	afx_msg void OnAppAbout();
+		// NOTE - the ClassWizard will add and remove member functions here.
+		//    DO NOT EDIT what you see in these blocks of generated code !
+	//}}AFX_MSG
+	DECLARE_MESSAGE_MAP()
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+
+//{{AFX_INSERT_LOCATION}}
+// Microsoft Visual C++ will insert additional declarations immediately before the previous line.
+
+#endif // !defined(AFX_CLIENTINFO_H__F2494A85_B987_11D4_8E50_00105A69FD52__INCLUDED_)

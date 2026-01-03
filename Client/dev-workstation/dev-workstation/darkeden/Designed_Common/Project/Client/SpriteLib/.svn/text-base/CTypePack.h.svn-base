@@ -1,0 +1,1585 @@
+#ifndef __CTYPEPACK_H__
+#define __CTYPEPACK_H__
+
+#include <windows.h>
+#include "vfstream.h"
+#include "CSpriteSetManager.h"
+#include "COrderedList.h"
+#include "CDirectDraw.h"
+#include <map>
+#include <vector>
+#include <io.h>
+
+class ITypePackBase
+{
+public:
+	ITypePackBase() {}
+	virtual ~ITypePackBase() {}
+
+	//--------------------------------------------------------
+	// Init/Release
+	//--------------------------------------------------------
+	virtual void	Init(WORD size) = 0;
+	virtual void	Release() = 0;
+	
+	//--------------------------------------------------------
+	// Size
+	//--------------------------------------------------------
+	virtual DWORD	GetSize() const = 0;
+	
+	//--------------------------------------------------------
+	// file I/O
+	//--------------------------------------------------------
+	virtual bool SaveToFile(std::ofstream &dataFile, std::ofstream &indexFile) = 0;
+	
+	virtual bool LoadFromFileRunning(LPCTSTR lpszFilename) = 0;
+	virtual bool LoadFromFile(LPCTSTR lpszFilename) = 0;
+	virtual bool LoadFromFilePart(int first, int last) = 0;
+	virtual bool LoadFromFilePart(CSpriteSetManager& SSM) = 0;
+	virtual bool LoadFromFileData(int dataID, int fileID, LPCTSTR packFilename, LPCTSTR indexFilename) = 0;
+
+	virtual bool ReleasePart(int first, int last) = 0;
+	virtual bool ReleasePart(COrderedList<TYPE_SPRITEID> list) = 0;
+
+	virtual bool SaveToFile(LPCTSTR lpszFilename) = 0;
+
+	virtual void FinishRunningLoad() = 0;
+};
+
+
+template <class Type>
+class CTypePack : public ITypePackBase
+{
+public:
+	CTypePack();
+	virtual ~CTypePack();
+
+	typedef std::map<WORD, ivfstream*> FILECACHE_MAP;
+	
+	//--------------------------------------------------------
+	// Init/Release
+	//--------------------------------------------------------
+	virtual void	Init(WORD size);
+	virtual void	Release();
+	
+	//--------------------------------------------------------
+	// Size
+	//--------------------------------------------------------
+	virtual DWORD	GetSize() const { return m_Size; }
+	
+	//--------------------------------------------------------
+	// operator
+	//--------------------------------------------------------
+	virtual Type&	operator [] (WORD n);//		{ return m_pSpritePals[n]; }
+	virtual Type&	Get(WORD n);
+
+	//--------------------------------------------------------
+	// file I/O
+	//--------------------------------------------------------
+	virtual bool SaveToFile(std::ofstream &dataFile, std::ofstream &indexFile);
+	
+	virtual bool LoadFromFileRunning(LPCTSTR lpszFilename);
+	virtual bool LoadFromFile(LPCTSTR lpszFilename);
+	virtual bool LoadFromFilePart(int first, int last);
+	virtual bool LoadFromFilePart(CSpriteSetManager& SSM);
+	virtual bool LoadFromFileData(int dataID, int fileID, LPCTSTR packFilename, LPCTSTR indexFilename);
+
+	virtual bool ReleasePart(int first, int last);
+	virtual bool ReleasePart(COrderedList<TYPE_SPRITEID> list);
+
+	virtual bool SaveToFile(LPCTSTR lpszFilename);
+
+	virtual void FinishRunningLoad();
+
+protected:
+	static bool	IsTwoMultiplier(int num);
+	static int	LogTwoMultiplier(int num);	// 2의 승수만 사용할 수 있는 Math Log
+	int			GetSplitFile(int idx, char* szBuf = NULL);
+	
+protected:
+	Type *			m_pData;
+	WORD			m_Size;
+	bool			m_bRunningLoad;
+
+	// runtime loading
+	ivfstream		*m_file;
+	int*			m_file_index;
+
+	bool			m_bSplitFile;
+	int				m_nUnitCount;
+	int				m_nUnitTwoMultiplier;	// (!)m_nUnitCount를 2의 승수로 저장를
+	std::string		m_strFileName;
+	std::string		m_strFileExt;
+
+	FILECACHE_MAP	m_FileCacheMap;
+};
+
+template <class Type>
+CTypePack<Type>::CTypePack()
+{
+	m_pData = NULL;
+	m_Size = 0;
+	m_bRunningLoad = false;
+	m_file_index = NULL;
+	m_file = NULL;
+
+	m_bSplitFile = false;
+	m_nUnitCount = 0;
+	m_nUnitTwoMultiplier = 0;
+}
+
+template <class Type>
+CTypePack<Type>::~CTypePack()
+{
+	Release();
+}
+
+template <class Type>
+void CTypePack<Type>::Release()
+{
+	FinishRunningLoad();
+
+	if(m_pData != NULL)
+	{
+		delete [] m_pData;
+		m_pData = NULL;
+		m_Size = 0;
+	}
+}
+
+template <class Type>
+void CTypePack<Type>::Init(WORD size)
+{
+	if(size == 0)
+		return;
+	
+	Release();
+	
+	m_Size = size;
+	
+	m_pData = new Type[size];
+}
+
+template <class Type>
+Type &CTypePack<Type>::operator [] (WORD n)
+{
+	return Get(n);
+}
+
+
+template <class Type>
+Type &CTypePack<Type>::Get(WORD n)
+{
+	if(m_bRunningLoad && !m_pData[n].IsInit())
+	{
+		// file에 있는 Sprite들을 Load
+		if(m_bSplitFile)
+		{
+			int fileIdx = GetSplitFile(n);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+
+			ivfstream *pFile = NULL;
+			
+			// 파일이 캐시에 있으면 있는걸로 쓴다.
+			if(pos != m_FileCacheMap.end())
+			{
+				pFile = pos->second;
+			}
+			// 파일이 캐시에 없으면 불러온다.
+			else
+			{
+				char fileName[MAX_PATH];
+				GetSplitFile(n, fileName);
+				pFile = new ivfstream(fileName, std::ios_base::binary);
+			}
+
+			WORD unitSize = 0;
+
+			pFile->seekg(0);
+			pFile->read((char *)&unitSize, 2);
+
+			// 인덱스 파일이 있을 경우
+			if(m_file_index)
+			{
+				// 파일에서의 위치를 얻는다.
+				int offset = m_file_index[n] - m_file_index[fileIdx];
+
+				// 2는 파일 크기 부분
+				pFile->seekg(offset + 2);
+				
+				m_pData[n].LoadFromFile(*pFile);
+			}
+			// 없는 경우는 전부 로드
+			else
+			{
+				// 파일 데이터 부분으로 고고싱
+				pFile->seekg(2);
+
+				for(register int i = 0; i < unitSize && fileIdx + i < m_Size; ++i)
+				{
+					m_pData[fileIdx + i].LoadFromFile(*pFile);
+				}
+			}
+
+			bool bLoadComplete = true;
+			
+			for(register int i = 0; i < unitSize && fileIdx + i < m_Size; ++i)
+			{
+				if(!m_pData[fileIdx + i].IsInit())
+				{
+					bLoadComplete = false;
+					break;
+				}
+			}
+
+			if(bLoadComplete)
+			{
+				delete pFile;
+
+				if(pos != m_FileCacheMap.end())
+					m_FileCacheMap.erase(pos);
+			}
+			else
+			{
+				if(pos == m_FileCacheMap.end())
+					m_FileCacheMap.insert(FILECACHE_MAP::value_type(fileIdx, pFile));
+			}
+		}
+		else
+		{
+			m_file->seekg(m_file_index[n]);
+			m_pData[n].LoadFromFile(*m_file);	// Sprite 읽어오기
+		}
+	}
+	
+	return m_pData[n];
+}
+
+
+template <class Type>
+bool CTypePack<Type>::LoadFromFile(LPCTSTR lpszFilename)
+{
+	if(iovfs_base::get_vfs()->IsFileExist(lpszFilename))
+	{
+		ivfstream file(lpszFilename, std::ios_base::binary);
+		file.read((char *)&m_Size, 2);
+		
+		Init(m_Size);
+		
+		register int i = 0;
+		
+		for(; i < m_Size; i++)
+		{
+			m_pData[i].LoadFromFile(file);
+		}
+	}
+	else
+	{
+		
+		if(!LoadFromFileRunning(lpszFilename))
+			return false;
+
+		register int i = 0;
+		
+		for(; i < m_Size; ++i)
+			Get(i);
+
+		if(m_bRunningLoad)
+			return false;
+	}
+
+	return true;
+}
+
+template <class Type>
+bool CTypePack<Type>::SaveToFile(LPCTSTR lpszFilename)
+{
+	char szIndexFilename[512];
+	sprintf(szIndexFilename, "%si", lpszFilename);
+
+	std::ofstream dataFile(lpszFilename, std::ios::binary);
+	std::ofstream indexFile(szIndexFilename, std::ios::binary);
+
+	bool re = SaveToFile(dataFile, indexFile);
+
+	dataFile.close();
+	indexFile.close();
+
+	return re;
+}
+
+
+//----------------------------------------------------------------------
+// Load From File Running
+//----------------------------------------------------------------------
+// 실시간 로딩
+//----------------------------------------------------------------------
+template <class Type>
+bool CTypePack<Type>::LoadFromFileRunning(LPCTSTR lpszFilename)
+{
+	Release();
+
+	//다음으로 인덱스 파일이 있다면 로드한다.
+	std::string indexFileName = lpszFilename;
+	indexFileName += 'i';
+
+	WORD indexSize = 0;
+	bool bLoadIndexFile = false;
+
+	ivfstream indexFile(indexFileName.c_str(), std::ios::binary);
+
+	if(indexFile.is_open())
+	{
+		indexFile.read((char *)&indexSize, 2);
+
+		Init(indexSize);
+		
+		m_file_index = new int[indexSize];
+		
+		register int i = 0;
+		
+		for(; i < indexSize; ++i)
+		{
+			indexFile.read((char*)&m_file_index[i], 4);
+		}
+		
+		indexFile.close();
+		
+		bLoadIndexFile = true;
+	}
+	else
+	{
+#ifdef OUTPUT_DEBUG
+		char szBuf[256];
+		sprintf(szBuf, "CTypePack Can Not Find Index File: %s\n", indexFileName.c_str());
+		OutputDebugString(szBuf);
+#endif
+	}
+
+	// 데이터 파일을 읽을 준비를 한다.
+	// 이때 분할 데이터와 통데이터는 분기처리한다.
+	m_bSplitFile = !iovfs_base::get_vfs()->IsFileExist(lpszFilename);
+
+	if(m_bSplitFile)
+	{
+		m_strFileName = lpszFilename;
+		
+		std::string strHeaderPath = m_strFileName;
+		strHeaderPath += "\\header.inf";
+		ivfstream fileHeader(strHeaderPath.c_str(), 0);
+		
+		if(!fileHeader.is_open())
+		{
+			Release();
+			return false;
+		}
+		
+		const int bufferSize = 8;
+		char lineBuffer[bufferSize];
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_Size = static_cast<WORD>(atoi(lineBuffer));
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_nUnitCount = static_cast<int>(atoi(lineBuffer));
+		m_nUnitTwoMultiplier = LogTwoMultiplier(m_nUnitCount);
+
+		fileHeader.close();
+		
+		// 확장자 저장
+		char szExt[_MAX_EXT];
+		_splitpath(lpszFilename, NULL, NULL, NULL, szExt);
+		
+		m_strFileExt = szExt;
+
+		if(!bLoadIndexFile || indexSize != m_Size)
+		{
+			Init(m_Size);
+			
+#ifdef OUTPUT_DEBUG
+			char szBuf[256];
+			sprintf(szBuf, "CTypePack Invaild Index File: %s = %d, %s = %d\n",
+				lpszFilename, m_Size, indexFileName.c_str(), indexSize);
+			OutputDebugString(szBuf);
+#endif
+		}
+	}
+	else
+	{
+		if(m_file == NULL)
+		{
+			m_file = new ivfstream;
+		}
+
+		// file에서 sprite 개수를 읽어온다.	
+		m_file->open(lpszFilename, std::ios::binary);
+
+		if(!m_file->is_open())
+		{
+			Release();
+			return false;
+		}
+
+		m_file->read((char*)&m_Size, 2);
+
+
+		if(!bLoadIndexFile || indexSize != m_Size)
+		{
+			Release();
+			return false;
+		}
+	}
+
+	m_bRunningLoad = true;
+
+	return true;
+}
+
+template <class Type>
+bool CTypePack<Type>::SaveToFile(std::ofstream &dataFile, std::ofstream &indexFile)
+{
+	//--------------------------------------------------
+	// index file을 생성하기 위한 정보
+	//--------------------------------------------------
+//	long*	pIndex = new long [m_Size];
+	std::vector<DWORD> vIndex;
+
+	//--------------------------------------------------
+	// Size 저장
+	//--------------------------------------------------
+	dataFile.write((const char *)&m_Size, 2); 
+	indexFile.write((const char *)&m_Size, 2); 
+	WORD realSize = m_Size;
+	DWORD index = 0;
+
+	for(int i = 0; i < m_Size; i++)
+	{
+		index = dataFile.tellp();
+		if(m_pData[i].SaveToFile(dataFile) == false)
+		{
+			realSize--;
+		}
+		else
+		{
+			vIndex.push_back(index);
+		}
+	}
+	
+	if(realSize != m_Size)
+	{
+		char szTemp[512];
+		sprintf(szTemp, "real size : %d size : %d", realSize, m_Size);
+		MessageBox(NULL, szTemp, "CTypePack", MB_OK);
+		dataFile.seekp(0);
+		dataFile.write((const char *)&realSize, 2);
+		indexFile.seekp(0);
+		indexFile.write((const char *)&realSize, 2);
+	}
+
+	//--------------------------------------------------
+	// index 저장
+	//--------------------------------------------------
+	for (i=0; i < (int)vIndex.size(); i++)
+	{
+		indexFile.write((const char*)&vIndex[i], 4);
+	}
+	
+//	delete [] pIndex;
+	
+//	indexFile.close();
+//	dataFile.close();
+
+	if(m_bRunningLoad)
+	{
+		FinishRunningLoad();
+	}
+
+	return true;
+}
+
+
+template <class Type>
+bool CTypePack<Type>::LoadFromFilePart(int first, int last)
+{
+	if(!m_bRunningLoad) return true;
+
+	last = min(last, 0xFFFE);
+
+	register int i = first;
+
+	for(; i <= last; i++)
+		Get(i);
+
+	return true;
+}
+
+
+template <class Type>
+bool CTypePack<Type>::LoadFromFilePart(CSpriteSetManager& SSM)
+{
+	if(!m_bRunningLoad) return true;
+
+	CSpriteSetManager::DATA_LIST::const_iterator iID = SSM.GetIterator();
+	register int t = 0;
+
+	for(; t<SSM.GetSize(); ++t, ++iID)
+	{
+		if(*iID != 0xFFFF)
+			Get(*iID);
+	}
+
+	return true;
+}
+
+template <class Type>
+bool CTypePack<Type>::ReleasePart(int first, int last)
+{
+	last = min(last, 0xFFFE);
+
+	if(m_bSplitFile)
+	{
+		register int i = first;
+
+		for(; i <= last; i++)
+		{
+			WORD fileIdx = GetSplitFile(i);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+			if(pos != m_FileCacheMap.end())
+			{
+				delete pos->second;
+				m_FileCacheMap.erase(pos);
+			}
+
+			for(int j = 0;
+				j < m_nUnitCount && fileIdx < m_Size;
+				++j, ++i, ++fileIdx)
+			{
+				if(m_pData[fileIdx].IsInit())
+					m_pData[fileIdx].Release();
+			}
+		}
+	}
+	else
+	{
+		register int i = first;
+
+		for(; i <= last; i++)
+		{
+			m_pData[i].Release();
+		}
+	}
+
+	return true;
+}
+
+template <class Type>
+bool CTypePack<Type>::ReleasePart(COrderedList<TYPE_SPRITEID> list)
+{
+	COrderedList<TYPE_SPRITEID>::DATA_LIST::const_iterator iID = list.GetIterator();
+
+	if(m_bSplitFile)
+	{
+		register int t = 0;
+
+		for(; t<list.GetSize(); t++, ++iID)
+		{
+			if(*iID == 0xFFFF) continue;
+			
+			WORD fileIdx = GetSplitFile(*iID);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+			if(pos != m_FileCacheMap.end())
+			{
+				delete pos->second;
+				m_FileCacheMap.erase(pos);
+			}
+
+			for(int i = 0; i < m_nUnitCount && fileIdx < m_Size; ++i, ++fileIdx)
+			{
+				if(m_pData[fileIdx].IsInit())
+					m_pData[fileIdx].Release();
+			}
+		}
+	}
+	else
+	{
+		register int t = 0;
+
+		for(; t<list.GetSize(); t++, ++iID)
+		{
+			if(*iID == 0xFFFF) continue;
+			m_pData[*iID].Release();
+		}
+	}
+
+	return true;
+}
+
+template <class Type>
+bool CTypePack<Type>::LoadFromFileData(int dataID, int fileID, LPCTSTR packFilename, LPCTSTR indexFilename)
+{
+	if (dataID < 0 || dataID >= m_Size || fileID < 0)
+	{
+		return false;
+	}
+
+	//-------------------------------------------------------------------
+	// load할 data의 file pointer를 읽는다.
+	//-------------------------------------------------------------------
+	bool bSplitFile = !iovfs_base::get_vfs()->IsFileExist(packFilename);
+
+	if(bSplitFile)
+	{
+		m_strFileName = packFilename;
+		
+		std::string strHeaderPath = m_strFileName;
+		strHeaderPath += "\\header.inf";
+		ivfstream fileHeader(strHeaderPath.c_str(), 0);
+		
+		if(!fileHeader.is_open()) return false;
+		
+		const int bufferSize = 8;
+		char lineBuffer[bufferSize];
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		int dataSize = static_cast<int>(atoi(lineBuffer));
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_nUnitCount = static_cast<int>(atoi(lineBuffer));
+		m_nUnitTwoMultiplier = LogTwoMultiplier(m_nUnitCount);
+
+		fileHeader.close();
+
+		if (fileID >= dataSize)
+		{
+			return false;
+		}
+		
+		// 확장자 저장
+		char szExt[_MAX_EXT];
+		_splitpath(packFilename, NULL, NULL, NULL, szExt);
+		
+		m_strFileExt = szExt;
+
+		char szFileName[MAX_PATH];
+
+		int fileStartID = GetSplitFile(fileID, szFileName);
+
+		ivfstream dataFile(szFileName, std::ios_base::binary);
+
+		dataFile.seekg(2);
+
+		do {
+			m_pData[dataID].LoadFromFile(dataFile);
+		}
+		while(fileStartID++ < fileID);
+	}
+	else
+	{
+		// 	if (access(packFilename, 0) || access(indexFilename, 0))
+		// 	{
+		// 		return false;
+		// 	}
+		
+		ivfstream dataFile(packFilename, std::ios::binary);
+		
+		if (!dataFile.is_open())
+		{
+			return false;
+		}
+		
+		ivfstream indexFile(indexFilename, std::ios::binary);
+		
+		if (!indexFile.is_open())
+		{
+			return false;
+		}
+		
+		
+		//-------------------------------------------------------------------
+		// index의 개수를 체크한다. fileID가 있는지..?
+		//-------------------------------------------------------------------
+		TYPE_SPRITEID num;
+		indexFile.read((char*)&num, sizeof(WORD));
+		
+		if (fileID >= num)
+		{
+			return false;
+		}
+
+		long fp;	
+		indexFile.seekg( 2 + fileID*4 );		// 2(num) + spriteID * (4 bytes)
+		indexFile.read((char*)&fp, 4);
+		
+		dataFile.seekg( fp );
+
+		m_pData[dataID].LoadFromFile( dataFile );
+	}
+	
+	return true;
+}
+
+template <class Type>
+void CTypePack<Type>::FinishRunningLoad()
+{
+	m_bRunningLoad = false;
+
+	FILECACHE_MAP::iterator pos = m_FileCacheMap.begin();
+
+	for(; pos != m_FileCacheMap.end(); ++pos)
+	{
+		ivfstream *pVF = pos->second;
+		if(pVF) delete pVF;
+	}
+
+	m_FileCacheMap.clear();
+
+	if(m_file)
+	{
+		delete m_file;
+		m_file = NULL;
+	}
+
+	if(m_file_index)
+	{
+		delete [] m_file_index;
+		m_file_index = NULL;
+	}
+}
+
+template <class Type>
+bool CTypePack<Type>::IsTwoMultiplier(int num)
+{
+	int count = 0;
+
+	for(int i = 0; i < 8; ++i) {
+		
+		if(num & 0x00000001) {
+			if(count > 0) return false;
+			++count;
+		}
+
+		num >>= 1;
+	}
+
+	return count == 1;
+}
+
+template <class Type>
+int CTypePack<Type>::LogTwoMultiplier(int num)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		if(num & 0x00000001) return i;
+		num >>= 1;
+	}
+
+	return 0;
+}
+
+template <class Type>
+int CTypePack<Type>::GetSplitFile(int idx, char* szBuf)
+{
+	WORD fileIdx = (idx >> m_nUnitTwoMultiplier) << m_nUnitTwoMultiplier;
+
+	if(szBuf)
+	{
+		sprintf(szBuf, "%s\\%05d%s",
+			m_strFileName.c_str(), fileIdx, m_strFileExt.c_str());
+	}
+
+	return fileIdx;
+}
+
+
+// CTypePack2
+template <class TypeBase, class Type1, class Type2>
+class CTypePack2 : public ITypePackBase
+{
+public:
+	CTypePack2();
+	virtual ~CTypePack2();
+
+	typedef std::map<WORD, ivfstream*> FILECACHE_MAP;
+	
+	//--------------------------------------------------------
+	// Init/Release
+	//--------------------------------------------------------
+	virtual void	Init(WORD size );
+	virtual void	Release();
+	
+	//--------------------------------------------------------
+	// Size
+	//--------------------------------------------------------
+	virtual DWORD	GetSize() const { return m_Size; }
+	
+	//--------------------------------------------------------
+	// operator
+	//--------------------------------------------------------
+	virtual TypeBase&	operator [] (WORD n);//		{ return m_pSpritePals[n]; }
+	virtual TypeBase&	Get(WORD n);
+
+	//--------------------------------------------------------
+	// file I/O
+	//--------------------------------------------------------
+	virtual bool SaveToFile(std::ofstream &dataFile, std::ofstream &indexFile);
+	
+	virtual bool LoadFromFileRunning(LPCTSTR lpszFilename);
+	virtual bool LoadFromFile(LPCTSTR lpszFilename);
+	virtual bool LoadFromFilePart(int first, int last);
+	virtual bool LoadFromFilePart(CSpriteSetManager& SSM);
+	virtual bool LoadFromFileData(int dataID, int fileID, LPCTSTR packFilename, LPCTSTR indexFilename);
+
+	virtual bool ReleasePart(int first, int last);
+	virtual bool ReleasePart(COrderedList<TYPE_SPRITEID> list);
+
+	virtual bool SaveToFile(LPCTSTR lpszFilename);
+
+	virtual bool Is565() { return m_bSecond; }
+
+	virtual void FinishRunningLoad();
+
+protected:
+	static bool	IsTwoMultiplier(int num);
+	static int	LogTwoMultiplier(int num);	// 2의 승수만 사용할 수 있는 Math Log
+	int			GetSplitFile(int idx, char* szBuf = NULL);
+	
+protected:
+	TypeBase *		m_pData;
+	WORD			m_Size;
+	bool			m_bRunningLoad;
+
+	// runtime loading
+	
+	ivfstream		*m_file;
+	int*			m_file_index;
+
+	bool			m_bSplitFile;
+	int				m_nUnitCount;
+	int				m_nUnitTwoMultiplier;	// (!)m_nUnitCount를 2의 승수로 저장를
+	std::string		m_strFileName;
+	std::string		m_strFileExt;
+
+	FILECACHE_MAP	m_FileCacheMap;
+	
+	bool			m_bSecond;
+};
+
+template <class TypeBase, class Type1, class Type2>
+CTypePack2<TypeBase, Type1, Type2>::CTypePack2()
+{
+	m_pData = NULL;
+	m_Size = 0;
+	m_bRunningLoad = false;
+	m_file_index = NULL;
+	m_file = NULL;
+
+	m_bSplitFile = false;
+	m_nUnitCount = 0;
+	m_nUnitTwoMultiplier = 0;
+}
+
+template <class TypeBase, class Type1, class Type2>
+CTypePack2<TypeBase, Type1, Type2>::~CTypePack2()
+{
+	Release();
+}
+
+template <class TypeBase, class Type1, class Type2>
+void CTypePack2<TypeBase, Type1, Type2>::Release()
+{
+	FinishRunningLoad();
+
+	if(m_pData != NULL)
+	{
+		delete []m_pData;
+		m_pData = NULL;
+		m_Size = 0;
+	}
+}
+
+template <class TypeBase, class Type1, class Type2>
+void CTypePack2<TypeBase, Type1, Type2>::Init(WORD size)
+{
+	if(size == 0)
+		return;
+	
+	Release();
+	
+	m_Size = size;
+	m_bSecond = CDirectDraw::Is565();
+
+	if( m_bSecond == true )
+		m_pData = new Type2[size];
+	else
+		m_pData = new Type1[size];
+}
+
+template <class TypeBase, class Type1, class Type2>
+TypeBase &CTypePack2<TypeBase, Type1, Type2>::operator [] (WORD n)
+{
+	return Get(n);
+}
+
+
+template <class TypeBase, class Type1, class Type2>
+TypeBase &CTypePack2<TypeBase, Type1, Type2>::Get(WORD n)
+{
+	if(m_bRunningLoad && !m_pData[n].IsInit())
+	{
+		// file에 있는 Sprite들을 Load
+		if(m_bSplitFile)
+		{
+			int fileIdx = GetSplitFile(n);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+
+			ivfstream *pFile = NULL;
+			
+			// 파일이 캐시에 있으면 있는걸로 쓴다.
+			if(pos != m_FileCacheMap.end())
+			{
+				pFile = pos->second;
+			}
+			// 파일이 캐시에 없으면 불러온다.
+			else
+			{
+				char fileName[MAX_PATH];
+				GetSplitFile(n, fileName);
+				pFile = new ivfstream(fileName, std::ios_base::binary);
+			}
+
+			WORD unitSize = 0;
+
+			pFile->seekg(0);
+			pFile->read((char *)&unitSize, 2);
+
+			// 인덱스 파일이 있을 경우
+			if(m_file_index)
+			{
+				// 파일에서의 위치를 얻는다.
+				int offset = m_file_index[n] - m_file_index[fileIdx];
+
+				// 2는 파일 크기 부분
+				pFile->seekg(offset + 2);
+				
+				m_pData[n].LoadFromFile(*pFile);
+			}
+			// 없는 경우는 전부 로드
+			else
+			{
+				// 파일 데이터 부분으로 고고싱
+				pFile->seekg(2);
+
+				for(register int i = 0; i < unitSize && fileIdx + i < m_Size; ++i)
+				{
+					m_pData[fileIdx + i].LoadFromFile(*pFile);
+				}
+			}
+
+			bool bLoadComplete = true;
+			
+			for(register int i = 0; i < unitSize && fileIdx + i < m_Size; ++i)
+			{
+				if(!m_pData[fileIdx + i].IsInit())
+				{
+					bLoadComplete = false;
+					break;
+				}
+			}
+
+			if(bLoadComplete)
+			{
+				delete pFile;
+
+				if(pos != m_FileCacheMap.end())
+					m_FileCacheMap.erase(pos);
+			}
+			else
+			{
+				if(pos == m_FileCacheMap.end())
+					m_FileCacheMap.insert(FILECACHE_MAP::value_type(fileIdx, pFile));
+			}
+		}
+		else
+		{
+			m_file->seekg(m_file_index[n]);
+			m_pData[n].LoadFromFile(*m_file);	// Sprite 읽어오기
+		}
+	}
+	
+	return m_pData[n];
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFile(LPCTSTR lpszFilename)
+{
+	if(iovfs_base::get_vfs()->IsFileExist(lpszFilename))
+	{
+		ivfstream file(lpszFilename, std::ios_base::binary);
+		file.read((char *)&m_Size, 2);
+		
+		Init(m_Size);
+		
+		register int i = 0;
+		
+		for(; i < m_Size; i++)
+		{
+			m_pData[i].LoadFromFile(file);
+		}
+	}
+	else
+	{
+		
+		if(!LoadFromFileRunning(lpszFilename))
+			return false;
+		
+		register int i = 0;
+
+		for(; i < m_Size; ++i)
+			Get(i);
+
+		if(m_bRunningLoad)
+			return false;
+	}
+
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::SaveToFile(LPCTSTR lpszFilename)
+{
+	char szIndexFilename[512];
+	sprintf(szIndexFilename, "%si", lpszFilename);
+
+	std::ofstream dataFile(lpszFilename, std::ios::binary);
+	std::ofstream indexFile(szIndexFilename, std::ios::binary);
+
+	bool re = SaveToFile(dataFile, indexFile);
+
+	dataFile.close();
+	indexFile.close();
+
+	return re;
+}
+
+
+//----------------------------------------------------------------------
+// Load From File Running
+//----------------------------------------------------------------------
+// 실시간 로딩
+//----------------------------------------------------------------------
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFileRunning(LPCTSTR lpszFilename)
+{
+	Release();
+
+	//다음으로 인덱스 파일이 있다면 로드한다.
+	std::string indexFileName = lpszFilename;
+	indexFileName += 'i';
+
+	WORD indexSize = 0;
+	bool bLoadIndexFile = false;
+
+	ivfstream indexFile(indexFileName.c_str(), std::ios::binary);
+
+	if(indexFile.is_open())
+	{
+		indexFile.read((char *)&indexSize, 2);
+
+		Init(indexSize);
+		
+		m_file_index = new int[indexSize];
+		
+		register int i = 0;
+		
+		for(; i < indexSize; ++i)
+		{
+			indexFile.read((char*)&m_file_index[i], 4);
+		}
+		
+		indexFile.close();
+		
+		bLoadIndexFile = true;
+	}
+	else
+	{
+#ifdef OUTPUT_DEBUG
+		char szBuf[256];
+		sprintf(szBuf, "CTypePack Can Not Find Index File: %s\n", indexFileName.c_str());
+		OutputDebugString(szBuf);
+#endif
+	}
+
+	// 데이터 파일을 읽을 준비를 한다.
+	// 이때 분할 데이터와 통데이터는 분기처리한다.
+	m_bSplitFile = !iovfs_base::get_vfs()->IsFileExist(lpszFilename);
+
+	if(m_bSplitFile)
+	{
+		m_strFileName = lpszFilename;
+		
+		std::string strHeaderPath = m_strFileName + "\\header.inf";
+		ivfstream fileHeader(strHeaderPath.c_str(), 0);
+		
+		if(!fileHeader.is_open())
+		{
+			Release();
+			return false;
+		}
+		
+		const int bufferSize = 8;
+		char lineBuffer[bufferSize];
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_Size = static_cast<WORD>(atoi(lineBuffer));
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_nUnitCount = static_cast<int>(atoi(lineBuffer));
+		m_nUnitTwoMultiplier = LogTwoMultiplier(m_nUnitCount);
+
+		fileHeader.close();
+		
+		// 확장자 저장
+		char szExt[_MAX_EXT];
+		_splitpath(lpszFilename, NULL, NULL, NULL, szExt);
+		
+		m_strFileExt = szExt;
+
+		if(!bLoadIndexFile || indexSize != m_Size)
+		{
+			if(m_file_index)
+			{
+				delete m_file_index;
+				m_file_index = NULL;
+			}
+
+			Init(m_Size);
+			
+#ifdef OUTPUT_DEBUG
+			char szBuf[256];
+			sprintf(szBuf, "CTypePack Invaild Index File: %s = %d, %s = %d\n",
+				lpszFilename, m_Size, indexFileName.c_str(), indexSize);
+			OutputDebugString(szBuf);
+#endif
+		}
+	}
+	else
+	{
+		if(m_file == NULL)
+		{
+			m_file = new ivfstream;
+		}
+
+		// file에서 sprite 개수를 읽어온다.	
+		m_file->open(lpszFilename, std::ios::binary);
+
+		if(!m_file->is_open())
+		{
+			Release();
+			return false;
+		}
+
+		m_file->read((char*)&m_Size, 2);
+
+
+		if(!bLoadIndexFile || indexSize != m_Size)
+		{
+			Release();
+			return false;
+		}
+	}
+
+	m_bRunningLoad = true;
+
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::SaveToFile(std::ofstream &dataFile, std::ofstream &indexFile)
+{
+	//--------------------------------------------------
+	// index file을 생성하기 위한 정보
+	//--------------------------------------------------
+//	long*	pIndex = new long [m_Size];
+	std::vector<DWORD> vIndex;
+
+	//--------------------------------------------------
+	// Size 저장
+	//--------------------------------------------------
+	dataFile.write((const char *)&m_Size, 2); 
+	indexFile.write((const char *)&m_Size, 2); 
+	WORD realSize = m_Size;
+	DWORD index = 0;
+
+	for(int i = 0; i < m_Size; i++)
+	{
+		index = dataFile.tellp();
+		if(m_pData[i].SaveToFile(dataFile) == false)
+		{
+			realSize--;
+		}
+		else
+		{
+			vIndex.push_back(index);
+		}
+	}
+	
+	if(realSize != m_Size)
+	{
+		char szTemp[512];
+		sprintf(szTemp, "real size : %d size : %d", realSize, m_Size);
+		MessageBox(NULL, szTemp, "CTypePack2", MB_OK);
+		dataFile.seekp(0);
+		dataFile.write((const char *)&realSize, 2);
+		indexFile.seekp(0);
+		indexFile.write((const char *)&realSize, 2);
+	}
+
+	//--------------------------------------------------
+	// index 저장
+	//--------------------------------------------------
+	for (i = 0; i < (int)vIndex.size(); i++)
+	{
+		indexFile.write((const char*)&vIndex[i], 4);
+	}
+	
+//	delete [] pIndex;
+	
+//	indexFile.close();
+//	dataFile.close();
+
+	if(m_bRunningLoad)
+	{
+		FinishRunningLoad();
+	}
+
+	return true;
+}
+
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFilePart(int first, int last)
+{
+	if(!m_bRunningLoad) return true;
+
+	last = min(last, 0xFFFE);
+
+	register int i = first;
+
+	for(; i <= last; i++)
+		Get(i);
+
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFilePart(CSpriteSetManager& SSM)
+{
+	if(!m_bRunningLoad) return true;
+
+	CSpriteSetManager::DATA_LIST::const_iterator iID = SSM.GetIterator();
+	register int t = 0;
+
+	for(; t<SSM.GetSize(); ++t, ++iID)
+	{
+		if(*iID != 0xFFFF)
+			Get(*iID);
+	}
+
+	return true;
+}
+
+
+/*
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFilePart(int first, int last)
+{
+	last = min(last, 0xFFFE);
+	for(int i = first; i <= last; i++)
+		operator[](i);
+
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFilePart(const CSpriteSetManager& SSM)
+{
+	CSpriteSetManager::DATA_LIST::const_iterator iID = SSM.GetIterator();
+	for (int t=0; t<SSM.GetSize(); t++)
+	{
+		if(*iID != 0xFFFF)
+			Get(*iID);
+	}
+
+	return true;
+}
+*/
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::ReleasePart(int first, int last)
+{
+	last = min(last, 0xFFFE);
+
+	if(m_bSplitFile)
+	{
+		register int i = first;
+
+		for(; i <= last; i++)
+		{
+			WORD fileIdx = GetSplitFile(i);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+			if(pos != m_FileCacheMap.end())
+			{
+				delete pos->second;
+				m_FileCacheMap.erase(pos);
+			}
+
+			for(int j = 0;
+				j < m_nUnitCount && fileIdx < m_Size;
+				++j, ++i, ++fileIdx)
+			{
+				if(m_pData[fileIdx].IsInit())
+					m_pData[fileIdx].Release();
+			}
+		}
+	}
+	else
+	{
+		register int i = first;
+
+		for(; i <= last; i++)
+		{
+			m_pData[i].Release();
+		}
+	}
+
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::ReleasePart(COrderedList<TYPE_SPRITEID> list)
+{
+	COrderedList<TYPE_SPRITEID>::DATA_LIST::const_iterator iID = list.GetIterator();
+
+	if(m_bSplitFile)
+	{
+		register int t = 0;
+
+		for(; t<list.GetSize(); t++, ++iID)
+		{
+			if(*iID == 0xFFFF) continue;
+			
+			WORD fileIdx = GetSplitFile(*iID);
+
+			FILECACHE_MAP::iterator pos = m_FileCacheMap.find(fileIdx);
+			if(pos != m_FileCacheMap.end())
+			{
+				delete pos->second;
+				m_FileCacheMap.erase(pos);
+			}
+
+			for(int i = 0; i < m_nUnitCount && fileIdx < m_Size; ++i, ++fileIdx)
+			{
+				if(m_pData[fileIdx].IsInit())
+					m_pData[fileIdx].Release();
+			}
+		}
+	}
+	else
+	{
+		register int t = 0;
+
+		for(; t<list.GetSize(); t++, ++iID)
+		{
+			if(*iID == 0xFFFF) continue;
+			m_pData[*iID].Release();
+		}
+	}
+
+	return true;
+}
+
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::LoadFromFileData(int dataID, int fileID, LPCTSTR packFilename, LPCTSTR indexFilename)
+{
+	if (dataID < 0 || dataID >= m_Size || fileID < 0)
+	{
+		return false;
+	}
+
+	//-------------------------------------------------------------------
+	// load할 data의 file pointer를 읽는다.
+	//-------------------------------------------------------------------
+	bool bSplitFile = !iovfs_base::get_vfs()->IsFileExist(packFilename);
+
+	if(bSplitFile)
+	{
+		m_strFileName = packFilename;
+		
+		std::string strHeaderPath = m_strFileName + "\\header.inf";
+		ivfstream fileHeader(strHeaderPath.c_str(), 0);
+		
+		if(!fileHeader.is_open()) return false;
+		
+		const int bufferSize = 8;
+		char lineBuffer[bufferSize];
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		int dataSize = static_cast<int>(atoi(lineBuffer));
+
+		fileHeader.getline(lineBuffer, bufferSize);
+		m_nUnitCount = static_cast<int>(atoi(lineBuffer));
+		m_nUnitTwoMultiplier = LogTwoMultiplier(m_nUnitCount);
+
+		fileHeader.close();
+
+		if (fileID >= dataSize)
+		{
+			return false;
+		}
+		
+		// 확장자 저장
+		char szExt[_MAX_EXT];
+		_splitpath(packFilename, NULL, NULL, NULL, szExt);
+		
+		m_strFileExt = szExt;
+
+		char szFileName[MAX_PATH];
+
+		int fileStartID = GetSplitFile(fileID, szFileName);
+
+		ivfstream dataFile(szFileName, std::ios_base::binary);
+
+		dataFile.seekg(2);
+
+		do {
+			m_pData[dataID].LoadFromFile(dataFile);
+		}
+		while(fileStartID++ < fileID);
+	}
+	else
+	{
+		// 	if (access(packFilename, 0) || access(indexFilename, 0))
+		// 	{
+		// 		return false;
+		// 	}
+		
+		ivfstream dataFile(packFilename, std::ios::binary);
+		
+		if (!dataFile.is_open())
+		{
+			return false;
+		}
+		
+		ivfstream indexFile(indexFilename, std::ios::binary);
+		
+		if (!indexFile.is_open())
+		{
+			return false;
+		}
+		
+		
+		//-------------------------------------------------------------------
+		// index의 개수를 체크한다. fileID가 있는지..?
+		//-------------------------------------------------------------------
+		TYPE_SPRITEID num;
+		indexFile.read((char*)&num, sizeof(WORD));
+		
+		if (fileID >= num)
+		{
+			return false;
+		}
+
+		long fp;	
+		indexFile.seekg( 2 + fileID*4 );		// 2(num) + spriteID * (4 bytes)
+		indexFile.read((char*)&fp, 4);
+		
+		dataFile.seekg( fp );
+
+		m_pData[dataID].LoadFromFile( dataFile );
+	}
+	
+	return true;
+}
+
+template <class TypeBase, class Type1, class Type2>
+void CTypePack2<TypeBase, Type1, Type2>::FinishRunningLoad()
+{
+	m_bRunningLoad = false;
+
+	FILECACHE_MAP::iterator pos = m_FileCacheMap.begin();
+
+	for(; pos != m_FileCacheMap.end(); ++pos)
+	{
+		ivfstream *pVF = pos->second;
+		if(pVF) delete pVF;
+	}
+
+	m_FileCacheMap.clear();
+
+	if(m_file)
+	{
+		delete m_file;
+		m_file = NULL;
+	}
+
+	if(m_file_index)
+	{
+		delete [] m_file_index;
+		m_file_index = NULL;
+	}
+}
+
+
+template <class TypeBase, class Type1, class Type2>
+bool CTypePack2<TypeBase, Type1, Type2>::IsTwoMultiplier(int num)
+{
+	int count = 0;
+
+	for(int i = 0; i < 8; ++i) {
+		
+		if(num & 0x00000001) {
+			if(count > 0) return false;
+			++count;
+		}
+
+		num >>= 1;
+	}
+
+	return count == 1;
+}
+
+template <class TypeBase, class Type1, class Type2>
+int CTypePack2<TypeBase, Type1, Type2>::LogTwoMultiplier(int num)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		if(num & 0x00000001) return i;
+		num >>= 1;
+	}
+
+	return 0;
+}
+
+
+template <class TypeBase, class Type1, class Type2>
+int CTypePack2<TypeBase, Type1, Type2>::GetSplitFile(int idx, char* szBuf)
+{
+	WORD fileIdx = (idx >> m_nUnitTwoMultiplier) << m_nUnitTwoMultiplier;
+
+	if(szBuf)
+	{
+		sprintf(szBuf, "%s\\%05d%s",
+			m_strFileName.c_str(), fileIdx, m_strFileExt.c_str());
+	}
+
+	return fileIdx;
+}
+
+
+#endif

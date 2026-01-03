@@ -1,0 +1,4840 @@
+
+#include "Client_PCH.h"
+#include "ContentsFilter.h"
+#if __CONTENTS(__XTRAP)
+#include "XTrap4Client.h"
+#endif //__XTRAP
+//#define __NPROTECT__//by viva
+//#undef __NPROTECT__
+//#undef __NPROTECT_OLD_VERSION__
+//#define NO_GAMEGUARD
+//#define __NPROTECT_OLD_VERSION__
+
+
+
+//-----------------------------------------------------------------------------
+// Client.cpp1
+//-----------------------------------------------------------------------------
+
+
+#pragma warning(disable:4786)
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0500 /* version 5.0 */
+#endif /* !_WIN32_WINNT */
+
+//#ifdef _DEBUG
+//#define _CRTDBG_MAP_ALLOC
+//#endif
+
+#include "DebugInfo.h"
+// #ifndef _DEBUG
+// #include "CrashReport.h"
+// #endif
+
+#if defined(OUTPUT_DEBUG) || defined(_DEBUG) || defined(__DEBUG_OUTPUT__)
+#undef __NPROTECT__
+#define NO_GAMEGUARD 
+
+#endif
+
+#ifndef _DEBUG
+#define __VVPROTECT__//by viva
+#endif
+//-----------------------------------------------------------------------------
+// Include files
+//-----------------------------------------------------------------------------
+#include <Windows.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <io.h>
+#include <direct.h>
+#include <time.h>
+#include <crtdbg.h>
+#include <string>
+#include <process.h>
+#include <sys/stat.h>
+#include <cerrno>
+#include "Client.h"
+#include "GameObject.h"
+#include "VS_UI.h"
+#include "MMusic.h"
+#include "UIDialog.h"
+#include "UpdateManager.h"
+#include "MZLib.h"
+#include <Commctrl.h>
+#include "AppendPatchInfo.h"
+#include "EffectSpriteTypeDef.h"
+//#include "MFileDef.h"
+#include "Properties.h"
+#include "ServerInfo.h"
+#include "MTestDef.h"
+#include "Resource.h"
+#include "UserInformation.h"
+#include "MFileDef.h"
+#include "SoundSetting.h"
+#include "OperatorOption.h"
+#include "APICheck.h" //by viva
+#include "Defender.h"
+#include "ThemidaSDK.h"
+#include <DbgHelp.h>
+#include <strsafe.h>
+#include "Win32Edite.h"
+
+#if !__CONTENTS(__INTERNATIONAL_UI)
+#	define __USE_CRASH_REPORT
+#endif
+
+#ifdef __USE_CRASH_REPORT
+#ifdef	__BUGTRAP
+#include "CrashReport/CrashReport.h"
+#endif //__BUGTRAP
+#endif
+
+
+//#ifdef __NPROTECT__
+//#include "nProtect.h"
+//#endif
+
+#if __CONTENTS(__CRYPT)
+#include "Crypt.h"
+#endif
+
+#ifdef	_DEBUG
+	//#include <vld.h>
+#endif
+
+
+//#define	new			DEBUG_NEW
+//#define	UPDATER_FILENAME		"Updater.exe" 
+#define DIRECTORY_UPDATE		"Update"
+
+#ifndef OUTPUT_DEBUG
+	#define	USE_UPDATER
+#endif
+
+#if defined(OUTPUT_DEBUG) && defined(__METROTECH_TEST__)
+//	#define	__WM_OUTPUT_DEBUG__
+#endif
+
+#ifdef OUTPUT_DEBUG
+	extern CRITICAL_SECTION		g_Lock;
+#endif
+
+#ifdef OUTPUT_DEBUG
+//	int CLogFile = -1;
+#endif
+//-----------------------------------------------------------------------------
+// Global
+//-----------------------------------------------------------------------------
+
+#ifdef __NPROTECT__
+NPROTECT_STATUS g_nProtectSTATUS = NPROTECT_NORMAL;
+#endif
+HWND				g_hWnd;
+HINSTANCE			g_hInstance;
+int					g_x=400;
+int					g_y=300;
+//bool				g_bHALAvailable = false;
+DWORD				g_dwVideoMemory = 0;
+
+char				g_CWD[_MAX_PATH];
+
+int					g_Dimension = 0;
+DWORD				g_TimerNPMON = 0;
+
+// FPS
+DWORD				g_CurrentTime		= 0;		// 시간
+DWORD				g_CurrentFrame		= 0;		// frame수
+
+int					g_FrameCount		= 0;
+int					g_StartFrameCount	= 0;
+DWORD				g_StartTime			= timeGetTime();
+DWORD				g_EndTime			= g_StartTime;
+int					g_FrameRate			= 0;
+DWORD				g_PingSendTime      = 0;
+DWORD				g_PingReceivTime    = 0;
+DWORD				g_Ping              = 0;
+
+bool				g_bGoodFPS			= true;
+
+const int			g_FrameGood			= 15;
+
+LONG				g_lGameRunBreakTime	= 0;	//게임 실행이 중지 될 때(스크린 샷 또는 Pause Break)
+
+CWin32Edite*		g_pWin32Edite = NULL;
+
+//2009.01.05 shootkj
+//by viva
+#ifdef __DESIGNED_KOREA
+BOOL g_IsWow64 = FALSE;
+#endif
+
+typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+
+LPFN_ISWOW64PROCESS fnIsWow64Process;
+
+BOOL IsWow64()
+{
+	BOOL bIsWow64 = FALSE;
+
+	fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+		GetModuleHandle(TEXT("kernel32")),"IsWow64Process");
+  
+	if (NULL != fnIsWow64Process)
+	{
+		if (!fnIsWow64Process(GetCurrentProcess(),&bIsWow64))
+		{
+			// handle error
+		}
+	}
+	return bIsWow64;
+}
+//end
+// Application Time
+DWORD				gGetApplcationRunTime(bool bReset)
+{
+	//DWORD static time = timeGetTime();
+	DWORD dwCurrentTime = timeGetTime();
+	if(bReset)
+		g_gameStartTime = dwCurrentTime;
+	return dwCurrentTime - g_gameStartTime;
+}
+DWORD				g_gameStartTime		= timeGetTime();
+#if __CONTENTS(__XTRAP)
+DWORD WINAPI XTrap_Check_Alive(LPVOID temp)
+{
+	DWORD dwTime = 20000;
+	while(1)
+	{
+		Sleep(20000);
+		XTrap_C_CallbackAlive(dwTime);
+	}
+}
+#endif //__XTRAP
+// Execute Program --> bActiveApp
+// minimize | anotherWnd click--> !ActiveGame
+BOOL				g_bActiveApp			= FALSE; // Is application active?
+BOOL				g_bActiveGame			= FALSE; // Is Game Active?
+BOOL				g_bNeedUpdate			= FALSE; // update해야되나?
+
+DWORD				g_double_click_time = 0;
+
+bool				g_bTestMode = false;
+//BOOL				g_WindowsNT = FALSE;
+bool				g_bForceExitBynProtect = false;
+bool				g_bForceExitBynProtect2 = false;
+DWORD				g_nProtectErrorMessage = 0;
+DWORD				g_nProtectErrorMessage2 = 0;
+int					g_LeftPremiumDays = 0;
+bool				g_bFamily = false;
+BYTE				g_PayType = 1;
+//bool				g_bSuperUser			= false;
+
+//void SizeOfObjects();
+//#define				__WEB_BROWSER__
+//IWebBrowser2*			g_pWebBrowser = NULL; 
+// [Futec수정]
+char g_FutecIP[20] = { 0, };
+unsigned int g_FutecPort = 0;
+BYTE g_AdvanceVampireActionMaxCount[ ACTION_ADVANCEMENT_MAX - ACTION_ADVANCEMENT_STOP ];
+BYTE g_AdvanceSlayerActionMaxCount[ ACTION_ADVANCEMENT_SLAYER_MAX - ACTION_ADVANCEMENT_SLAYER_STOP_SWORD ];
+BYTE g_AdvanceOustersActionMaxCount[ ACTION_ADVANCEMENT_OUSTERS_MAX - ACTION_ADVANCEMENT_OUSTERS_CHAKRAM_STOP ];
+
+enum DARKEDEN_LANGUAGE
+{
+	DARKEDEN_KOREAN = 0,
+	DARKEDEN_CHINESE,
+	DARKEDEN_JAPANESE,
+	DARKEDEN_ENGLISH,
+	DARKEDEN_TAIWAN,
+	
+	DARKEDEN_LANGUAGE_MAX
+};
+
+struct NETMARBLE_INFO
+{
+	MString ID;
+	MString Password;
+	int WorldID;
+	int ServerID;
+	bool bGore;
+};
+
+// 2004, 7, 14, sobeit add start
+struct REALSERVER_INFO
+{
+	REALSERVER_INFO() { bMode = false;WorldID = 0;}
+	bool bMode;		// 0: 수동접속, 1:정상접속
+	int WorldID;	// 0: 브란, 1: 펠레스
+	MString ID;		// id
+	MString Key;	// Key
+};
+// 2004, 7, 14, sobeit add end
+
+BYTE g_macAddress[6];
+extern bool CheckMacScreenMode();
+extern BOOL GetMacAddressFromSock();
+//-----------------------------------------------------------------------------
+// define function
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// addFile을 읽어서 originalFile의 끝에 붙인다.
+//-----------------------------------------------------------------------------			
+#define WRITE_FROM_FILE(originalFile, patchFile)		\
+		{												\
+			char buffer[4096];							\
+			int n;										\
+														\
+			while (1)									\
+			{											\
+				patchFile.read(buffer, 4096);			\
+				n = patchFile.gcount();					\
+														\
+				if (n > 0)								\
+				{										\
+					originalFile.write(buffer, n);		\
+				}										\
+				else									\
+				{										\
+					break;								\
+				}										\
+			}											\
+		}
+
+//-----------------------------------------------------------------------
+// Get Futec Address [Futec수정]
+//-----------------------------------------------------------------------
+// DarkEden.exe Futec(IP:Port)
+//              01234567890123
+//-----------------------------------------------------------------------
+bool
+GetFutecAddress(const char* pStr)
+{
+	char * pFutecStr = strstr(pStr, "Futec");
+	char * pLeftParen = strchr(pStr, '(');
+	char * pSeperator = strchr(pStr, ':');
+	char * pRightParen = strchr(pStr, ')');
+
+	if (pFutecStr==NULL
+		|| pLeftParen==NULL
+		|| pSeperator==NULL
+		|| pRightParen==NULL
+		|| !(pFutecStr < pLeftParen 
+			&& pLeftParen < pSeperator
+			&& pSeperator < pRightParen))
+		return false;
+
+	char str[20];
+
+	memset(g_FutecIP, 0, 20);//by viva
+	strncpy( g_FutecIP, pLeftParen+1, pSeperator-(pLeftParen+1) );
+
+	memset(str, 0, 20);//by viva
+	strncpy( str, pSeperator+1, pRightParen-(pSeperator+1) );
+	g_FutecPort = atoi(str);
+
+	return true;
+}
+
+bool ParsingNetmarble(const char* pCommandLine, NETMARBLE_INFO &info);
+//bool ParsingRealServer(const char* pCommandLine,  int Dimention, REALSERVER_INFO &info);
+
+bool
+ParsingRealServer(const char* pCommandLine, int Dimention, REALSERVER_INFO &info)
+{
+	if( pCommandLine == NULL )
+		return false;
+	
+	char szTemp[4096];
+	if(strlen(pCommandLine) < 16)
+		return false;
+
+	const char *pString = strchr(pCommandLine, ' ');
+	if(pString == NULL)
+	{
+		return false;
+	}
+	
+	strcpy(szTemp, pString+1);
+	
+	int argcnt = 0;
+	char* token = NULL;
+	//해당 문자열을 32바이트로 늘리면서 NULL문자 누락이 생기지 않도록 +1 해준다.
+	char arg2[4][32+1];
+	argcnt = 0;
+
+	token = strtok(szTemp, "|");
+	if(NULL == token)
+		return false;
+	while(token && argcnt < 4)
+	{
+		strcpy(arg2[argcnt], token);
+		argcnt++;
+		token = strtok(NULL, "|");
+	//	if(NULL == token)
+	//		return false;
+	}
+	// mode|demention|ID|key
+	info.bMode = atoi(arg2[0])?1:0;
+	info.WorldID = atoi(arg2[1]);
+	info.ID = arg2[2];
+	info.Key = arg2[3];
+	
+	return true;
+} 
+//-----------------------------------------------------------------------------
+// Name: InitFail()
+// Desc: This function is called if an initialization function fails
+//-----------------------------------------------------------------------------
+HRESULT InitFail(LPCTSTR szError,...)
+{
+	// 프로그램 중단..
+	g_bActiveApp = FALSE;
+
+	ShowCursor( TRUE );
+	ShowWindow(g_hWnd, SW_HIDE);
+
+    char		szBuff[1024];
+    va_list		vl;
+
+    va_start(vl, szError);
+    vsprintf(szBuff, szError, vl);
+
+    //ReleaseAllObjects();
+	DEBUG_ADD( szBuff );
+
+    MessageBox(g_hWnd, szBuff, PROGRAM_TITLE, MB_OK);
+    DestroyWindow(g_hWnd);
+    va_end(vl);
+
+    return 0;
+}
+
+//-----------------------------------------------------------------------------
+// ProgressBar
+//-----------------------------------------------------------------------------
+bool g_bUseProgressBar = true;
+HWND g_hWndProgress = NULL;
+const int progressBarWidth = 300;
+const int progressBarHeight = 40;
+const int g_numAppendFiles = 16;		// AppendPatch.inf의 file들 개수
+
+std::map<DWORD,std::string> g_nProtectMessage;
+
+void
+RemoveProgressBar()
+{
+	if (g_hWndProgress!=NULL)
+	{
+		DestroyWindow(g_hWndProgress); 
+		g_hWndProgress = NULL;
+	}
+}
+
+DARKEDEN_LANGUAGE CheckDarkEdenLanguage()
+{
+	// Language 정보는 DATA\INFO\Infodata.rpk 에 들어있다. 
+
+	CRarFile rarfile;
+	
+	if( g_pFileDef == NULL )
+		return DARKEDEN_KOREAN;
+
+	rarfile.SetRAR(g_pFileDef->getProperty("FILE_INFO_DATA").c_str(), RPK_PASSWORD);
+	rarfile.Open(g_pFileDef->getProperty("FILE_LANGUAGE_INFO").c_str() );
+
+	if( !rarfile.IsSet() )
+		return DARKEDEN_KOREAN;
+
+	char szLine[512];
+	int num = 0;
+
+	while( rarfile.GetString( szLine, 512 ) )
+	{
+		if( szLine[0] == ';' || strlen( szLine ) <= 0 )
+			continue;
+
+		if( strncmp( szLine, "LANGUAGE",8 ) == 0 )
+		{
+			sscanf(szLine+8,"%d",&num);
+			break;
+		}
+	}
+
+	rarfile.Release();
+
+	return (DARKEDEN_LANGUAGE)(DARKEDEN_KOREAN + num );
+}
+
+void		PrecalculateAdvancementClassCreatureFrames()
+{
+	memset( g_AdvanceVampireActionMaxCount, 0, sizeof( g_AdvanceVampireActionMaxCount ) );
+	memset( g_AdvanceSlayerActionMaxCount, 0, sizeof( g_AdvanceSlayerActionMaxCount ) );
+	memset( g_AdvanceOustersActionMaxCount, 0, sizeof( g_AdvanceOustersActionMaxCount ) );
+
+	int i;
+
+	
+	for( i = ACTION_ADVANCEMENT_SLAYER_STOP_SWORD; i < ACTION_ADVANCEMENT_SLAYER_MAX  ; ++i )
+	{
+		int actionindex = i - ADVANCEMENT_ACTION_START;
+		
+		char part = 0;
+		if( i == ACTION_ADVANCEMENT_SLAYER_BIKE_MOVE)
+		   {
+		      g_AdvanceSlayerActionMaxCount[ actionindex ] = 4;//칡辜盧땡
+		 	  continue;
+	       }
+
+			// ||
+			//i == ACTION_ADVANCEMENT_SLAYER_BIKE_STOP )
+			//part = AC_BIKE_1;
+
+		g_AdvanceSlayerActionMaxCount[ actionindex ] = 
+			g_pTopView->m_AdvancementSlayerManFPK[ part ][ actionindex ][2].GetSize();
+
+		g_AdvanceSlayerActionMaxCount[ 36 ] =   23;				 //	훙잚瘻斂价空暇竟錦릿
+	}
+	
+
+	for( i = ACTION_ADVANCEMENT_STOP; i < ACTION_ADVANCEMENT_MAX; ++i )
+	{
+		int actionindex = i - ADVANCEMENT_ACTION_START;
+
+		g_AdvanceVampireActionMaxCount[ actionindex ] = 
+			g_pTopView->m_AdvancementVampireManFPK[0][ actionindex ][2].GetSize();
+	}
+
+	for( i = ACTION_ADVANCEMENT_OUSTERS_CHAKRAM_STOP; i < ACTION_ADVANCEMENT_OUSTERS_MAX; ++i )
+	{
+		int actionindex = i - ADVANCEMENT_ACTION_START;
+
+		g_AdvanceOustersActionMaxCount[ actionindex ] = 
+			g_pTopView->m_AdvancementOustersFPK[1][ actionindex ][2].GetSize();
+	}
+}
+
+int			
+GetPersnalShopUpdateTime()
+{
+	CRarFile rarfile;
+
+	rarfile.SetRAR(g_pFileDef->getProperty("FILE_INFO_DATA").c_str(), RPK_PASSWORD);
+	rarfile.Open(g_pFileDef->getProperty("FILE_UPDATE_PERSNALSHOPTIME").c_str() );
+
+	if( !rarfile.IsSet() )
+		return 60000;
+
+	char szLine[512];
+	int num = 0;
+
+	while( rarfile.GetString( szLine, 512 ) )
+	{
+		if( strncmp( szLine, "UPDATETIME",10 ) == 0 )
+		{
+			sscanf(szLine+10,"%d",&num);
+			break;
+		}
+	}
+
+	rarfile.Release();
+
+	return num;
+}
+
+void
+CreateProgressBar(const char* str)
+{
+	if (g_bUseProgressBar)
+	{
+		RemoveProgressBar();
+
+		InitCommonControls();
+
+		int cyVScroll = GetSystemMetrics(SM_CYVSCROLL); 
+		g_hWndProgress = CreateWindowEx(WS_EX_TOPMOST, PROGRESS_CLASS, str, 
+										WS_VISIBLE | PBS_SMOOTH, 
+										GetSystemMetrics(SM_CXSCREEN)/2 - progressBarWidth/2, 
+										GetSystemMetrics(SM_CYSCREEN)/2 - progressBarHeight/2, 
+										progressBarWidth, progressBarHeight,
+										NULL, (HMENU)0, g_hInstance, NULL); 
+	}
+}
+
+
+void
+SetProgressBarCount(int count)
+{	
+	if (!g_bUseProgressBar || g_hWndProgress==NULL)
+	{
+		return;
+	}
+
+	SendMessage(g_hWndProgress, PBM_SETRANGE, 0, MAKELPARAM(0, count)); 
+    SendMessage(g_hWndProgress, PBM_SETSTEP, (WPARAM) 1, 0); 
+	SendMessage(g_hWndProgress, PBM_SETPOS, (WPARAM) 0, 0); 	
+}
+
+void
+SetProgressBarText(const char* str)
+{
+	if (g_bUseProgressBar)
+	{
+		if (g_hWndProgress==NULL)
+		{
+			CreateProgressBar(str);
+			SetProgressBarCount( g_numAppendFiles );
+		}
+		else
+		{
+			SetWindowText( g_hWndProgress, str	);
+		}
+	}
+}
+
+
+
+void
+UpdateProgressBar()
+{
+	if (!g_bUseProgressBar || g_hWndProgress==NULL)
+	{
+		return;
+	}
+
+	SendMessage(g_hWndProgress, PBM_STEPIT, 0, 0); 
+}
+
+
+//-----------------------------------------------------------------------------
+// Patch Log Window
+//-----------------------------------------------------------------------------
+HWND		g_hPatchLogWnd = NULL;
+HWND		g_hPatchLogEdit = NULL;
+char*		g_pPatchLogBuffer = NULL;	// 얼마나 클지 몰라서리 global에 뒀다.
+
+long FAR PASCAL 
+PatchLogWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+    {
+		case WM_DESTROY:
+            PostQuitMessage(0);
+        return 0L;
+	}
+	return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+bool
+ReadPatchLogFromFile()
+{
+	char strBuffer[256];
+
+	char* filename = "PatchLog.txt";
+
+	if(access(filename, 0))
+	{
+		return false;
+	}
+
+	std::ifstream file(filename);	// text file이다.
+
+	file.seekg( 0, std::ios::end );
+	long fpEnd = file.tellg();
+
+	if (g_pPatchLogBuffer!=NULL)
+	{
+		delete [] g_pPatchLogBuffer;
+	}
+	g_pPatchLogBuffer = new char [fpEnd*2];
+
+	file.seekg( 0 );
+
+	char* pBuffer = g_pPatchLogBuffer;
+
+	while (!file.eof())
+	{
+		file.getline(strBuffer, 254);
+		int n = file.gcount();		
+		
+		if (n==0)
+		{
+			break;
+		}
+
+		if (strBuffer[n-1]=='\0')
+		{
+			n -= 1;
+		}
+
+		// \r\n을 붙여줘야 다음줄이 된다.		
+		strBuffer[n] = '\r';
+		strBuffer[n+1] = '\n';
+		
+		strncpy(pBuffer, strBuffer, n+2);
+		pBuffer += n+2;
+	}
+	*pBuffer = '\0';
+
+	file.close();
+
+	SetWindowText( g_hPatchLogEdit, g_pPatchLogBuffer );
+
+	delete [] g_pPatchLogBuffer;
+	g_pPatchLogBuffer = NULL;
+
+	return true;
+}
+
+void OutPutClassSize()
+{
+//#ifdef __DEBUG_OUTPUT__
+//	SizeOfObjects();
+//#endif
+}
+
+void
+ShowPatchLogWindow()
+{
+/*	int width = 600;
+	int height = 350;
+
+	WNDCLASS               wc;
+
+	wc.style			= CS_HREDRAW | CS_VREDRAW;
+	wc.lpfnWndProc		= (WNDPROC)PatchLogWindowProc;
+	wc.cbClsExtra		= 0;
+	wc.cbWndExtra		= 0;
+	wc.hInstance		= g_hInstance;
+	wc.hIcon			= LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_DARKEDEN));
+	wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground	= (HBRUSH )GetStockObject(BLACK_BRUSH);
+	wc.lpszMenuName		= NULL;
+	wc.lpszClassName	= "PatchLog";
+	RegisterClass(&wc);
+
+	DWORD style = WS_OVERLAPPEDWINDOW;
+	style &= ~WS_MINIMIZEBOX;
+	style &= ~WS_MAXIMIZEBOX;
+	style &= ~WS_THICKFRAME;
+
+	g_hPatchLogWnd = CreateWindow("PatchLog", "다크에덴 패치내용", 
+							style,
+							GetSystemMetrics(SM_CXSCREEN)/2 - width/2, 
+							GetSystemMetrics(SM_CYSCREEN)/2 - height/2, 
+							width,	height, 
+							NULL, NULL, g_hInstance, NULL);   
+   
+	if (!g_hPatchLogWnd)
+	{
+		return;
+	}
+
+	RECT rect;
+	GetClientRect(g_hPatchLogWnd, &rect);
+	g_hPatchLogEdit = CreateWindow(TEXT("edit"), NULL,
+						   WS_CHILD | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | WS_BORDER | ES_LEFT | ES_MULTILINE  | 
+
+ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_READONLY,
+						   0,0, 
+						   rect.right-rect.left, rect.bottom-rect.top,
+						   g_hPatchLogWnd, NULL, g_hInstance, NULL);
+
+	if (!ReadPatchLogFromFile())
+	{
+		DestroyWindow( g_hPatchLogWnd );		
+		
+		// 바로 return하면 main window가 죽는다. - -;		
+	}
+	else
+	{
+		ShowWindow(g_hPatchLogWnd, SW_SHOW);
+		UpdateWindow(g_hPatchLogWnd);  
+		SetFocus(g_hPatchLogWnd);
+	}
+	
+	MSG		msg;
+	while (1)
+	{
+		if (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE))
+		{	
+			if (!GetMessage(&msg, NULL, 0, 0))
+				break;
+				//return msg.wParam;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		else
+		{
+			WaitMessage();
+		}
+	}
+*/
+}
+
+//-----------------------------------------------------------------------------
+// Check DX Version
+//-----------------------------------------------------------------------------
+// DirectX Version을 check한다.
+//-----------------------------------------------------------------------------
+/*
+bool
+CheckDXVersion()
+{
+	DWORD dwVer, dwPlatform;
+	CDirectSetup::GetVersion( &dwVer, &dwPlatform );
+
+	//------------------------------------------------------
+	// Platform check
+	//------------------------------------------------------
+	//switch( dwPlatform )
+    //{
+      //  case DXVER_PLATFORM_WINDOWS:
+            //strcpy( strBuff, "OS:\tWindows 9x\n" );
+        //    break;
+        //case DXVER_PLATFORM_NT:
+            //strcpy( strBuff, "OS:\tWindows NT\n" );
+          //  break;
+        //default:
+            //strcpy( strBuff, "Error!\n" );
+          //  break;
+    //}
+
+
+	//------------------------------------------------------
+	// DirectX Version check
+	//------------------------------------------------------
+	// DX 7.0 이상
+    if (dwVer==DXVER_DX_7)
+	{			
+		return true;
+	}
+	
+	//InitFail("You need to install DirectX 7.0 or later version...");
+
+	// 안 깔렸으면 아예 깔아버리자..
+	char directory[_MAX_PATH];
+
+	// 현재 디렉토리를 얻어서 
+	GetCurrentDirectory( _MAX_PATH, directory );
+
+	// 실행화일 이름을 붙인다.
+	sprintf(directory, "%s\\%s", directory, PROGRAM_FILENAME);
+
+	CDirectSetup::SetRestartProgram(directory);
+	CDirectSetup::DirectXInstall(g_hWnd, g_hInstance, "DirectX7", true);
+	
+	// 새로 깔고 나서 바로 실행해도 되는걸까?
+	// rebooting 해야하지 않을까??
+
+	return true;    
+	//return false;    
+}
+*/
+ 
+//-----------------------------------------------------------------------------
+// Name: WindowProc()
+// Desc: The Main Window Procedure
+//-----------------------------------------------------------------------------
+long FAR PASCAL 
+WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	//MINMAXINFO      *pMinMax;
+
+    switch (message)
+    {
+	//case WM_CREATE:
+	//	g_pWin32Edite = new CWin32Edite(hWnd, g_hInstance);//揭匡와빵똥
+	//	gC_vs_ui.SetWin32Edite( g_pWin32Edite );//揭匡와빵똥
+	//	break;
+
+	case WM_CTLCOLOREDIT:
+		if ( g_pWin32Edite )
+			return g_pWin32Edite->OnColor(hWnd, message, wParam, lParam);
+		break;
+
+#ifdef __NPROTECT__
+#ifdef __NPROTECT_OLD_VERSION__
+	case WM_NPROTECT_SOFTICE :
+		DEBUG_ADD("[nProtect] GameClose By nProtect (Window Message : WM_NPROTECT_SOFTICE)");
+//		SetMode( MODE_QUIT );
+		g_nProtectSTATUS = NPROTECT_SOFTICE;
+		break;
+
+	case WM_NPROTECT_EXIT_TWO :
+		DEBUG_ADD("[nProtect] GameClose By nProtect (Window Message : WM_NPROTECT_EXIT_TWO)");
+//		SetMode( MODE_QUIT );
+		g_nProtectSTATUS = NPROTECT_EXIT_TWO;
+		break;
+	case WM_NPROTECT_FORCEEXIT :
+		DEBUG_ADD("[nProtect] GameClose By nProtect (Window Message : WM_NPROTECT_FORCEEXIT)");		
+//		SetMode( MODE_QUIT );
+		g_nProtectSTATUS = NPROTECT_FORCE_EXIT;
+		break;
+	case WM_NPROTECT_SH_ERROR :
+		DEBUG_ADD("[nProtect] GameClose By nProtect (Window Message : WM_NPROTECT_SH_ERROR)");
+		g_nProtectSTATUS = NPROTECT_SH_ERROR;
+		break;
+	case WM_NPROTECT_SPEEDHACK :
+		g_nProtectSTATUS = NPROTECT_SPEEDHACK;
+		break;
+#endif
+#endif
+	// zzi	-  20071010 한글입력 강제 차단.
+	//			IME 모드 변화 메세지를 받아서~~~ 강제로.. NONCONVERSION 시켜보았다.
+	//		수정하기 전에는 WM_IME_NOTIFY 처리 case문이 주석으로 처리되어 있었으며, 내용은 없었다. 
+#if !__CONTENTS (__LANGUAGE_CHANGE)
+	case WM_IME_NOTIFY:
+		{
+			if ((DWORD)wParam == IMN_SETCONVERSIONMODE )
+			{
+				HIMC hImc = ImmGetContext( hWnd );
+				if (hImc)
+				{
+					// Get current IME status
+					DWORD dwConvMode, dwSentMode;
+					ImmGetConversionStatus( hImc, &dwConvMode, &dwSentMode );
+					// notify ime mode change
+					bool nativeMode = ((dwConvMode & IME_CMODE_NATIVE) != 0);
+					
+//					if( nativeMode )
+//						dwConvMode |= IME_CMODE_NATIVE;
+//					else
+//						dwConvMode &= ~IME_CMODE_NATIVE;
+
+					dwConvMode = IME_CMODE_NOCONVERSION;
+
+					ImmSetConversionStatus( hImc, dwConvMode, dwSentMode );
+					// Release input context
+					ImmReleaseContext(hWnd,hImc);
+				}
+			}
+		}
+		return 0;
+#endif
+		//---------------------------------------------------------------
+		//
+		//						MM_MCINOTIFY
+		//
+		//---------------------------------------------------------------
+		case MM_MCINOTIFY :
+		{
+			// Mid가 다 연주되었다는 말이다.
+			if (wParam==MCI_NOTIFY_SUCCESSFUL)
+			{
+				// Opening 동영상이 끝난 경우
+				if (g_pAvi!=NULL && (DWORD)lParam==g_pAvi->dwID) 
+				{ 
+					g_pAvi->bEndFlag=true; 
+					g_pAvi->Close(); 
+
+					// Login 화면으로...
+					SetMode( MODE_MAINMENU );
+				}				
+				// 음악 연주가 끝난 경우
+				else
+				{
+					/*
+					// 반복 연주 안한다.
+					if (g_pUserOption->PlayMusic)//g_Music.IsPause())	// 과연 필요할까.. - -;
+					{
+						if (g_pUserOption->PlayWaveMusic)
+						{
+							g_pDXSoundStream->Play( FALSE );
+						}
+						else
+						{
+							g_Music.RePlay();						
+						}
+					}
+					*/
+					//else
+					//{
+						// 반복해서 연주한다.
+					//	g_Music.RePlay();
+					//}
+//					if(g_pMP3->IsLoop())
+//						g_pMP3->Play(true);
+				}
+			}
+		}
+		return 0L;
+
+		//---------------------------------------------------------------
+		//
+		//	WM_SYSCOMMAND
+		// 
+		//---------------------------------------------------------------
+		case WM_SYSCOMMAND:
+            // Prevent moving/sizing and power loss in fullscreen mode
+            switch( wParam )
+            {
+				case SC_HOTKEY:
+				case SC_KEYMENU:
+				case SC_TASKLIST:
+#if !defined(OUTPUT_DEBUG) && !defined(__DEBUG_OUTPUT__)
+				case SC_PREVWINDOW:
+				case SC_NEXTWINDOW:
+#endif
+					return 1;
+
+				case SC_CLOSE:
+				case SC_MOVE:
+                case SC_SIZE:
+                case SC_MAXIMIZE:
+                case SC_MONITORPOWER:
+				case SC_SCREENSAVE :
+                    if( CDirectDraw::IsFullscreen() )
+                        return 1;
+                    break;
+            }
+        break;//return 0L;
+
+
+		//---------------------------------------------------------------
+		//
+		//							WM_ACTIVATE
+		//
+		//---------------------------------------------------------------
+		/*
+		case WM_ACTIVATE :		
+		{
+			#ifdef __WM_OUTPUT_DEBUG__
+					DEBUG_ADD("[WM_ACTIVATE]");
+			#endif
+
+					/*
+			//WORD fActive = LOWORD(wParam);           // activation flag 
+			//BOOL fMinimized = (BOOL) HIWORD(wParam); // minimized flag 
+
+			// active됐고 minimized가 아닌 상태가 ActiveGame이당..
+			//BOOL bActive = (fActive==WA_ACTIVE) || (fActive==WA_CLICKACTIVE);
+			//				//&& !fMinimized;
+
+			//g_double_click_time = GetDoubleClickTime();
+
+			//if (g_bActiveApp)
+			{
+			//	CheckActivate(bActive);
+			
+			//	g_bActiveGame = bActive;			
+			}			
+		
+			BOOL bActive = (wParam == WA_ACTIVE) || (wParam == WA_CLICKACTIVE);        
+			
+			if (g_pDXInput!=NULL)
+			{
+				// acquire
+				g_pDXInput->SetAcquire(bActive);
+				
+				// 입력을 초기화한다.
+				g_pDXInput->Clear();
+			}
+		}
+		break;//return 0L;
+		*/
+
+		//---------------------------------------------------------------
+		//
+		//							WM_ACTIVATEAPP
+		//
+		//---------------------------------------------------------------
+		///*
+//		case WM_ACTIVATE :
+		case WM_ACTIVATEAPP :
+		{
+			#ifdef __WM_OUTPUT_DEBUG__
+					DEBUG_ADD("[WM_ACTIVATEAPP]");
+			#endif
+
+            // Pause if minimized or not the top window
+			//WORD fActive = LOWORD(wParam);
+			//WORD fMinimized = (BOOL) HIWORD(wParam); 
+            //g_bActiveGame = (fActive == WA_ACTIVE) || (fActive == WA_CLICKACTIVE);
+
+			g_double_click_time = GetDoubleClickTime();
+
+			BOOL bActiveGame = (BOOL)wParam;
+
+			//if (g_bActiveApp)
+			{
+				CheckActivate(bActiveGame);
+				// 
+				g_bActiveGame = bActiveGame;
+			}
+
+			// by svi	헌뇜Alt숩돨榴檄
+//			if (g_bActiveApp)
+//			{
+//				if (g_pDXInput->KeyDown(DIK_LMENU) || g_pDXInput->KeyDown(DIK_RMENU))
+//				{
+//					g_pDXInput->Clear();
+//				}
+//			}
+			//end
+
+			gC_vs_ui.CloseGameMenu();
+		}
+        break;//return 0L;
+		//*/
+
+		/*
+		case WM_SIZE :
+		{
+			BOOL bActive;
+
+			// Check to see if we are losing our window...
+            if( SIZE_MAXHIDE==wParam || SIZE_MINIMIZED==wParam )
+                bActive = FALSE;
+            else
+                bActive = TRUE;
+
+            g_double_click_time = GetDoubleClickTime();
+
+			if (g_bActiveApp)
+			{
+				CheckActivate(bActive);
+			
+				g_bActiveGame = bActive;			
+			}
+		}
+		break;
+		*/
+		
+		//---------------------------------------------------------------
+		//
+		//							WM_SIZE
+		//
+		//---------------------------------------------------------------
+		//case WM_SIZE:
+            // Check to see if we are losing our window...
+            //if (SIZE_MAXHIDE==wParam || SIZE_MINIMIZED==wParam)
+              //  g_bActiveGame = FALSE;
+            //else
+              //  g_bActiveGame = TRUE;
+        //return 0L;
+		
+		//---------------------------------------------------------------
+		//
+		//							WM_DESTROY
+		//
+		//---------------------------------------------------------------
+        case WM_DESTROY:
+            // Clean up and close the app            
+            PostQuitMessage(0);
+        return 0L;
+
+		case WM_GETMINMAXINFO:
+		{
+            // Fix the size of the window to 640x480 (client size)
+			MINMAXINFO* pMinMax = (MINMAXINFO *)lParam;
+			
+			//if( g_pUserInformation->IsResolution1024 )
+			//{
+				pMinMax->ptMinTrackSize.x = SURFACE_WIDTH+GetSystemMetrics(SM_CXSIZEFRAME)*2;
+				pMinMax->ptMinTrackSize.y = SURFACE_HEIGHT+GetSystemMetrics(SM_CYSIZEFRAME)*2
+											   +GetSystemMetrics(SM_CYMENU);
+			//}
+			//else
+			//{
+			//	pMinMax->ptMinTrackSize.x = 800+GetSystemMetrics(SM_CXSIZEFRAME)*2;
+			//	pMinMax->ptMinTrackSize.y = 600+GetSystemMetrics(SM_CYSIZEFRAME)*2
+			//		                           +GetSystemMetrics(SM_CYMENU);
+			//}
+            pMinMax->ptMaxTrackSize.x = pMinMax->ptMinTrackSize.x;
+            pMinMax->ptMaxTrackSize.y = pMinMax->ptMinTrackSize.y;
+		}
+        break;
+		
+		/*
+		case WM_PAINT:
+			if (g_bActiveApp)
+				CDirectDraw::OnPaint();
+			return 0L;
+		*/
+	
+		//---------------------------------------------------------------
+		//
+		//							WM_MOVE
+		//
+		//---------------------------------------------------------------
+		case WM_MOVE :
+			if (g_bActiveApp && !CDirectDraw::IsFullscreen())
+				CDirectDraw::OnMove();
+		break;
+
+		/*
+		case WM_MOUSEMOVE :		
+			//fwKeys = wParam;        // key flags 
+			//g_x = LOWORD(lParam);  // horizontal position of cursor 
+			//g_y = HIWORD(lParam);  // vertical position of cursor 
+			
+			return 0L;
+		*/
+
+		//---------------------------------------------------------------
+		//
+		//							WM_KEYDOWN
+		//
+		//---------------------------------------------------------------
+        case WM_KEYDOWN:
+			#ifdef __WM_OUTPUT_DEBUG__
+				DEBUG_ADD("[WM_KEYDOWN]");
+			#endif
+
+ 			if (g_Mode==MODE_OPENING)
+			{
+				// Opening을 끝낸다.
+				if (wParam==VK_ESCAPE || wParam==VK_RETURN || wParam==VK_SPACE)
+				{	
+					if (g_pAvi!=NULL)
+					{
+						g_pAvi->Close();
+					}
+					SetMode( MODE_MAINMENU );					
+				}
+				return 0L;
+			}
+
+			gC_vs_ui.KeyboardControl(message, wParam, lParam);
+            // Handle any non-accelerated key commands
+
+			switch (wParam)
+			{
+				//-----------------------------------------------
+				// Screen Shot
+				//-----------------------------------------------
+				case VK_SCROLL :	
+
+					if (!g_pOperatorOption->bSlideScreenShot)
+					{
+						MakeScreenShot();
+					}
+
+// 					#ifdef OUTPUT_DEBUG
+// 						if (!g_pOperatorOption->bSlideScreenShot)
+// 						{
+// 							MakeScreenShot();
+// 						}
+// 					#else
+// 						MakeScreenShot();
+// 					#endif
+					
+				return 0L;
+				//case VK_F11 : 
+				//		g_UpdateDelay = (g_UpdateDelay==1)? DELAY_UPDATE_GAME : 1;
+				//		return 0L;
+
+				//-----------------------------------------------
+				// Toggle Music
+				//-----------------------------------------------
+				/*
+				case VK_F3 :
+					//if (g_Music.IsPlay())
+					if (g_DXMusic.IsPlay())
+					{
+						//g_Music.Pause();
+						g_DXMusic.Pause();
+					}
+					else
+					{						
+						//g_Music.Resume();
+						g_DXMusic.Resume();
+					}										
+				return 0L;
+				*/
+
+				//-----------------------------------------------
+				// Volume 조절
+				//-----------------------------------------------
+				/*
+				case VK_F5 :
+					{
+						g_pMasterVolume->SetCurrentVolume(
+								g_pMasterVolume->GetCurrentVolume() - 0x1000
+							);
+					}
+					//if (g_pPlayer->IsExistAddon(MCreatureWear::ADDON_COAT))
+					//	g_pPlayer->SetAddonNULL(MCreatureWear::ADDON_COAT); 
+					//else g_pPlayer->SetAddon(MCreatureWear::ADDON_COAT, 0);						
+
+				
+				return 0L;
+	
+				case VK_F6 :		
+					{
+						//g_DXMusic.AddVolume( 0xF000 );
+						g_pMasterVolume->SetCurrentVolume(
+								g_pMasterVolume->GetCurrentVolume() + 0x1000
+							);
+					}
+					//if (g_pPlayer->IsExistAddon(MCreatureWear::ADDON_TROUSER))
+					//	g_pPlayer->SetAddonNULL(MCreatureWear::ADDON_TROUSER); 
+					//else g_pPlayer->SetAddon(MCreatureWear::ADDON_TROUSER, 1);
+				return 0L;
+				*/
+
+				//-----------------------------------------------
+				//
+				//				Debug Mode 용
+				//
+				//-----------------------------------------------
+				#if defined(OUTPUT_DEBUG)
+				
+					case VK_PAUSE :
+						g_bActiveApp = !g_bActiveApp;					
+
+						if(g_bActiveApp)
+						{
+							g_lGameRunBreakTime	= timeGetTime() - g_CurrentTime;
+						}
+
+					return 0L;
+
+					//-----------------------------------------------
+					// Toggle ActiveMode
+					//-----------------------------------------------
+					//case VK_F1 :
+					//	g_bActiveApp = !g_bActiveApp;
+					//	return 0L;	
+
+					//-----------------------------------------------
+					// 움직이는 방법 설정
+					//-----------------------------------------------
+					/*
+					case VK_F2 :
+					{					
+						if (g_pPlayer->IsStop())
+						{
+							// 움직이는 형태 바꾸기
+							//if (g_pPlayer->GetMoveDevice()==MCreature::MOVE_DEVICE_NULL)
+							//{
+							//	g_pPlayer->SetMoveDevice( MCreature::MOVE_DEVICE_MOTOR1 );
+							//}/
+							//else
+							//{
+								//g_pPlayer->SetMoveDevice( MCreature::MOVE_DEVICE_NULL );
+							//}
+						
+							g_pPlayer->SetAction( ACTION_STAND );
+
+							int type = g_pPlayer->GetCreatureType();
+
+							type++;
+
+							if (type==g_CreatureTable.GetSize())
+							{							
+								g_pPlayer->SetCreatureType( 0 );
+							}
+							else
+							{
+								g_pPlayer->SetCreatureType( type );
+							}
+
+							// 남자 Slayer
+							if (g_pPlayer->GetCreatureType()==0)
+							{
+								g_pPlayer->RemoveAddon( ADDON_COAT );	
+								g_pPlayer->RemoveAddon( ADDON_TROUSER );
+
+								MCoat		coat1;	
+								MTrouser	trouser1;	
+
+								coat1.SetItemType( 0 ); coat1.SetItemOption( 0 );
+								trouser1.SetItemType( 0 ); trouser1.SetItemOption( 0 );
+
+								g_pPlayer->SetAddonHair(ADDONID_HAIR1_MALE, 0);		// type, color
+								g_pPlayer->SetAddonItem( &coat1 );	
+								g_pPlayer->SetAddonItem( &trouser1 );
+							}
+							else if (g_pPlayer->GetCreatureType()==1)
+							{
+								g_pPlayer->RemoveAddon( ADDON_COAT );	
+								g_pPlayer->RemoveAddon( ADDON_TROUSER );
+
+								MCoat		coat1;	
+								MTrouser	trouser1;	
+
+								coat1.SetItemType( 0 ); coat1.SetItemOption( 0 );
+								trouser1.SetItemType( 0 ); trouser1.SetItemOption( 0 );
+
+								g_pPlayer->SetAddonHair(ADDONID_HAIR1_FEMALE, 0);		// type, 
+
+color
+								g_pPlayer->SetAddonItem( &coat1 );	
+								g_pPlayer->SetAddonItem( &trouser1 );
+							}
+							else
+							{
+								g_pPlayer->RemoveAddon( ADDON_COAT );	
+								g_pPlayer->RemoveAddon( ADDON_TROUSER );
+							}
+							
+
+							// 번쩍~~
+							g_pTopView->SetFadeStart(1, 31, 10,  31,0,0);
+						}							
+					}		
+					return 0L;
+					*/		
+
+					
+					/*
+					case VK_F7 :
+						//{
+						//	pWaveVolume->SetCurrentVolume(
+						//			pWaveVolume->GetCurrentVolume() - 0x1000
+						//		);
+						//}
+						//if (g_pPlayer->IsExistAddon(MCreatureWear::ADDON_SHOES))
+							//g_pPlayer->SetAddonNULL(MCreatureWear::ADDON_SHOES); 
+						//else g_pPlayer->SetAddon(MCreatureWear::ADDON_SHOES, 2);					
+						
+						// 공격 모드 전환
+						if (g_pPlayer->IsAttackModeAggress())
+						{
+							g_pPlayer->SetAttackModePeace();
+						}
+						else if (g_pPlayer->IsAttackModePeace())
+						{
+							g_pPlayer->SetAttackModeNormal();
+						}
+						else if (g_pPlayer->IsAttackModeNormal())
+						{
+							g_pPlayer->SetAttackModeAggress();
+						}
+
+					return 0L;
+					*/
+
+					/*
+					case VK_F8 :
+					{
+						//{
+							////g_DXMusic.AddVolume( 0xF000 );
+							//pWaveVolume->SetCurrentVolume(
+									//pWaveVolume->GetCurrentVolume() + 0x1000
+								//);
+						//}
+						//if (g_pPlayer->IsExistAddon(MCreatureWear::ADDON_HELM))
+						//	g_pPlayer->SetAddonNULL(MCreatureWear::ADDON_HELM); 
+						//else g_pPlayer->SetAddon(MCreatureWear::ADDON_HELM, 3);
+						static int a = 0;
+
+						if (a==0)
+						{
+							gC_vs_ui.ChangeToVampireInterface();
+							a = 1;
+						}
+						else
+						{
+							gC_vs_ui.ChangeToSlayerInterface();
+							a = 0;
+						}
+					}
+					return 0L;					
+					*/
+
+					//-----------------------------------------------
+					// Frame Fixing
+					//-----------------------------------------------
+					case VK_F11 : 
+						#if defined(_DEBUG)
+							if (g_pDXInput->KeyDown(DIK_LCONTROL) || g_pDXInput->KeyDown(DIK_RCONTROL))
+							{
+								g_UpdateDelay = (g_UpdateDelay==1)? DELAY_UPDATE_GAME : 1;
+							}
+						#endif
+						return 0L;
+
+					//-----------------------------------------------
+					// debug 메세지
+					//-----------------------------------------------
+					case VK_F12 : 
+						g_bPutMessage = !g_bPutMessage;
+						return 0L;				
+					
+					//-----------------------------------------------
+					// Debug Message 청소~하기
+					//-----------------------------------------------
+					case VK_DELETE :
+						{
+							#ifdef	OUTPUT_DEBUG
+								if (g_pDebugMessage!=NULL)
+										g_pDebugMessage->Clear();
+							#endif
+						}
+						return 0L;						
+
+				#endif
+			}		
+			
+		return 0L; 
+// 		case WM_TIMER :			
+// 			//for (loop = 0; loop < STREAM_MAX; ++loop)
+// //					if (g_pOGG[loop] ) 
+// #ifndef __USE_MP3__
+// 			if( g_DXSound.IsInit() && g_pOGG != NULL )
+// 				g_pOGG->streamUpdate (g_pOGG);
+// #endif
+// 			break;
+
+		//---------------------------------------------------------------
+		//
+		//							WM_CHAR
+		//
+		//---------------------------------------------------------------
+		case WM_CHAR :
+		{
+			#ifdef __WM_OUTPUT_DEBUG__
+				DEBUG_ADD("[WM_CHAR]");
+			#endif
+
+			/*
+			{
+				std::ofstream file("inputtest.txt", ios::app);
+				file << "input!" << (char)wParam << endl;
+				file.close();
+			}
+			*/
+			gC_vs_ui.KeyboardControl(message, wParam, lParam);
+
+
+			#ifdef __WM_OUTPUT_DEBUG__
+				DEBUG_ADD("UI KeyCtrl OK");
+			#endif
+
+			TCHAR ch = (TCHAR)wParam;    // character code 	
+			
+			//switch (ch)
+			//{
+			//	case '`' : g_bDrawMinimap = !g_bDrawMinimap;
+			//	return 0L;
+			//}
+
+			#if defined(OUTPUT_DEBUG) && defined(_DEBUG)
+				if (g_Mode==MODE_GAME)
+				switch (ch)
+				{					
+					///*
+					case '5' :
+					{
+						/*
+						for (int i=0; i<g_MaxNPC; i++)
+						{
+							MCreature* pCreature = g_pZone->GetCreature(1000+i);
+							if (pCreature != NULL)
+							{
+								if (pCreature->IsDead())
+								{
+									pCreature->SetAlive();
+								}
+								else
+								{
+									pCreature->SetDead();
+								}
+							}
+						}
+						*/
+						if (g_pDXInput->KeyDown(DIK_LCONTROL) || g_pDXInput->KeyDown(DIK_RCONTROL) )
+						{
+							if (g_pPlayer->IsDead())
+							{						
+								g_pPlayer->SetAlive();
+								g_pTopView->SetFadeEnd();
+							}
+							else
+							{
+								// 죽은 경우..
+								g_pPlayer->SetDead();						
+							}
+						}
+					}
+					return 0L;
+					//*/
+
+					// [ TEST CODE ]
+					case '/' :
+					{
+						// 상태 변경
+						/*
+						int newHP = g_pPlayer->GetHP() - 5;
+						int newMP = g_pPlayer->GetMP() - 3;
+
+						if (newHP < 0) newHP = 0;
+						if (newMP < 0) newMP = 0;
+
+						MStatus* pStatus = new MStatus;
+						pStatus->SetStatus(MODIFY_HP, newHP);
+						pStatus->SetStatus(MODIFY_MP, newMP);
+						
+						// UI변경					
+						gC_vs_ui.SetHP(newHP, 100);
+						gC_vs_ui.SetMP(newMP, 100);
+
+						// 결과에 HP가 변하도록 설정
+						MActionResult *pResult = new MActionResult;					
+						pResult->Add( new MActionResultNodeChangeStatus(g_pPlayer->GetID(), pStatus) );
+
+						// 결과 Action 등록
+						//g_pPlayer->PacketSpecialActionResult( SKILL_ATTACK_MELEE );
+						g_pPlayer->PacketSpecialActionResult( RESULT_VAMPIRE_DIE );
+
+						// 결과 내용 등록(effectID가 있어야 되는데..)
+						g_pPlayer->PacketAddActionResult(0, pResult);					
+						
+						
+						//switch (rand()%6)
+						//{
+						//	case 0 : g_pPlayer->SetChatString("huk!"); break;
+						//	case 1 : g_pPlayer->SetChatString("kek!"); break;
+						//	case 2 : g_pPlayer->SetChatString("uk!"); break;
+						//	case 3 : g_pPlayer->SetChatString("-_-!"); break;
+						//	case 4 : g_pPlayer->SetChatString("!!!"); break;
+						//	case 5 : g_pPlayer->SetChatString("*_*;"); break;
+						//}	
+						*/
+					}
+					return 0L;
+					//*/
+
+					// 살짝 붉게 변하기
+					case '6' :
+					{
+						g_pTopView->SetFadeStart(25, 31, 2, 31,0,0);					
+					}
+					break;
+
+					// 번개
+					case '7' :
+					{
+						SetLightning(rand()%4*500+500);					
+					}
+					break;
+					
+
+					case '.' :
+					{
+						do {
+							int newActionInfo;
+							
+							if (g_pPlayer->GetSpecialActionInfo()==ACTIONINFO_NULL)
+							{
+								newActionInfo = MAGIC_LIGHT;
+							}
+							else
+							{
+								newActionInfo = g_pPlayer->GetSpecialActionInfo()+1;
+							}
+
+							if (newActionInfo >= (*g_pActionInfoTable).GetMinResultActionInfo())
+								newActionInfo = 0;
+
+							int maxPlayerAction = g_pPlayer->GetActionMax();
+							int newActionInfoAction = (*g_pActionInfoTable)[newActionInfo].GetAction();
+							
+							g_pPlayer->SetSpecialActionInfo( newActionInfo );
+
+							// player에 있는 action인 경우..
+							if (newActionInfoAction <= maxPlayerAction)
+								break;
+						} while (1);					
+					}
+					return 0L;
+
+					case ',' :
+					{
+						do {
+							int newActionInfo;
+							
+							if (g_pPlayer->GetSpecialActionInfo()==ACTIONINFO_NULL)
+							{
+								newActionInfo = MAGIC_LIGHT;
+							}
+							else
+							{
+								newActionInfo = g_pPlayer->GetSpecialActionInfo()-1;
+							}
+
+							if (newActionInfo < 0)
+								newActionInfo = (*g_pActionInfoTable).GetMinResultActionInfo() - 1;
+
+							int maxPlayerAction = g_pPlayer->GetActionMax();
+							int newActionInfoAction = (*g_pActionInfoTable)[newActionInfo].GetAction();
+							
+							g_pPlayer->SetSpecialActionInfo( newActionInfo );
+
+							// player에 있는 action인 경우..
+							if (newActionInfoAction <= maxPlayerAction)
+								break;
+						} while (1);
+					}
+					return 0L;
+					case 'L' :
+						g_pPlayer->AddEffectStatus(EFFECTSTATUS_SHRINE_SHIELD,0xffff);
+						return 0L;			
+						
+				}					
+			#endif
+		}
+		return 0L;	
+				
+
+		/*
+        case WM_SETCURSOR:
+            // Turn off the cursor since this is a full-screen app
+            //if (CDirectDraw::IsActive() )//&& CDirectDraw::IsFullscreen())
+			{
+				//SetCursor(LoadCursor(NULL, IDC_ARROW));
+				//SetCursor(LoadCursorFromFile("Cursor2.cur"));
+				//SetCursor(LoadCursor(g_hInstance, MAKEINTRESOURCE(IDC_MYCROSS)));			
+				
+				//SetCursor(LoadCursorFromFile("Mono.cur"));
+				//SetCursor( LoadCursor(g_hInstance, MAKEINTRESOURCE(IDC_TEST)) );
+
+				//SetCursor( LoadIcon(NULL, IDI_ERROR) );
+
+				SetCursor(NULL);
+				
+				SetCapture(g_hWnd);
+			}
+            return TRUE;
+		*/		
+		// `한글입력시 IME표시가 나오지 못하도록 한다.
+		//
+
+		//---------------------------------------------------------------
+		//
+		//				WM_KEYUP
+		//				WM_IME_COMPOSITION
+		//				WM_IME_STARTCOMPOSITION
+		//				WM_IME_ENDCOMPOSITION
+		//
+		//---------------------------------------------------------------
+		case WM_KEYUP:
+		 case WM_IME_COMPOSITION:
+		 case WM_IME_STARTCOMPOSITION:
+		 case WM_IME_ENDCOMPOSITION:
+			 
+			#ifdef __WM_OUTPUT_DEBUG__
+				switch (message)
+				{
+					case WM_KEYUP:
+						DEBUG_ADD("[WM_KEYUP]");
+					break;
+
+					 case WM_IME_COMPOSITION:
+						 DEBUG_ADD("[WM_IME_COMPOSITION]");
+					break;
+
+					 case WM_IME_STARTCOMPOSITION:
+						 DEBUG_ADD("[WM_IME_STARTCOMPOSITION]");
+					break;
+
+					 case WM_IME_ENDCOMPOSITION:
+						 DEBUG_ADD("[WM_IME_ENDCOMPOSITION]");
+					break;
+				}	
+			#endif
+
+				if(((wParam == 244  || wParam == 243 || wParam == 240)  &&  message == 257)  ||
+					((wParam == 256)  &&  message == 257) ||
+					((wParam == 28)  &&  message == 257  && !gC_ci->IsEngInput() && gC_ci->IsJapanese()))
+				{
+					if(wParam == 240 || wParam == 28)
+					{
+						gC_ci->SetComposion(false) ; 
+					}
+					bool	bComposion = gC_ci->GetComposion() ; 
+					gC_ci->SetComposion(!bComposion) ; 
+				} 
+
+			gC_vs_ui.KeyboardControl(message, wParam, lParam);
+
+			#ifdef __WM_OUTPUT_DEBUG__
+				DEBUG_ADD("[WM_IME_....] OK");
+			#endif
+
+			if (message == WM_IME_STARTCOMPOSITION)
+				return 0;
+
+			break; // ! break!!!!
+
+    }
+
+	#ifdef __WM_OUTPUT_DEBUG__
+		DEBUG_ADD("[WM_....]");
+	#endif
+
+    return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+//-----------------------------------------------------------------------------
+// Name: InitApp()
+// Desc: Do work required for every instance of the application:
+//          Create the window, initialize data
+//-----------------------------------------------------------------------------
+BOOL
+InitApp(int nCmdShow)
+{
+	WNDCLASS                    wc;
+
+    // Set up and register window class
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    wc.lpfnWndProc = WindowProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hInstance = g_hInstance;
+    wc.hIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_DARKEDEN));
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH )GetStockObject(BLACK_BRUSH);
+    wc.lpszMenuName = NULL;//NAME;
+    wc.lpszClassName = PROGRAM_NAME;
+    RegisterClass(&wc);
+	
+	// Calculate the proper size for the window given a client of 640x480
+    int cx,cy;	
+	DWORD style = 0;
+	DWORD exStyle = 0;
+
+#ifdef __WEB_BROWSER__
+	CoInitialize(NULL);
+	if (HRESULT hr = FAILED(CoCreateInstance(CLSID_InternetExplorer,NULL,
+			CLSCTX_LOCAL_SERVER, IID_IWebBrowser2,(LPVOID*)&g_pWebBrowser))) 
+		{
+			MessageBox(NULL, "IWebBrowser2 Create failed", "ERROR", MB_OK);
+			return FALSE;
+		}
+#endif
+
+	
+	memset( g_macAddress, 0, 6*sizeof(BYTE) );
+	//if(GetMacAddressFromSock())
+
+	// MacAddress Operator Check
+	if(GetMacAddressFromNetBIOS(g_macAddress))
+	{
+		bool bMacAddressCheck = CheckMacScreenMode();
+		g_pUserInformation->attrOperator.SetAttr(OPERATORTYPE_MACADDRESS, bMacAddressCheck);
+	}
+
+	// RelaseLog Operator Check
+#if defined(OUTPUT_DEBUG) || defined(_DEBUG) || defined(__DEBUG_OUTPUT__)
+	bool bReleaseLogCheck = true;
+	g_pUserInformation->attrOperator.SetAttr(OPERATORTYPE_RELEASELOG, bReleaseLogCheck);
+#endif
+
+
+	// 윈도우 모드로 접속해 BoA요~
+	// 윈도우 모드 일반 공개
+	if/*(true)*/ (g_pUserInformation->attrOperator.GetValue())//by viva
+	{
+		int nAnswer = MessageBox(g_hWnd,
+			"角뤠눗왯頓契踏狗？", "헝狂",
+			MB_YESNOCANCEL|MB_ICONQUESTION);
+
+		if(nAnswer == IDCANCEL)
+			return FALSE;
+
+		g_bFullScreen = (nAnswer != IDYES);
+	}
+
+	
+
+// 2004, 8, 27, sobeit add end - mac address 체크 및, mac screen mode 체크
+	if (g_bFullScreen)
+	{
+		exStyle = WS_EX_TOPMOST;// | WS_EX_APPWINDOW;
+		//style = WS_POPUP;
+		style = WS_POPUP|WS_CLIPCHILDREN;
+	//	style = WS_POPUP|WS_CLIPCHILDREN| WS_CLIPSIBLINGS;
+		cx = GetSystemMetrics(SM_CXSCREEN);
+		cy = GetSystemMetrics(SM_CYSCREEN);				  
+	}
+	else
+	{
+		// 16비트 모드로 화면 전환
+		//*
+		DEVMODE devModeScreen;
+		memset( &devModeScreen, 0, sizeof(devModeScreen));
+		devModeScreen.dmSize		= sizeof(DEVMODE);
+		devModeScreen.dmFields		= DM_BITSPERPEL;
+		devModeScreen.dmBitsPerPel	= 16;
+		
+		if(ChangeDisplaySettings(&devModeScreen, CDS_TEST) == DISP_CHANGE_SUCCESSFUL)
+			ChangeDisplaySettings(&devModeScreen, 0);
+		else
+			MessageBox(NULL, "","꼇連넣맡롸길쪽", MB_OK);
+		
+		exStyle = WS_EX_APPWINDOW;
+		style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN ;//WS_CLIPCHILDREN | WS_OVERLAPPED | WS_THICKFRAME | WS_MINIMIZEBOX;//WS_OVERLAPPEDWINDOW;
+		style &= ~WS_MAXIMIZEBOX;
+
+		cx = SURFACE_WIDTH + GetSystemMetrics(SM_CXSIZEFRAME)*2;
+		cy = SURFACE_HEIGHT + GetSystemMetrics(SM_CYSIZEFRAME)*2+GetSystemMetrics(SM_CYMENU);
+
+	}
+
+	// Create a window
+    g_hWnd = CreateWindowEx(exStyle,//0,
+                          PROGRAM_NAME,
+                          PROGRAM_TITLE,
+						  style,
+                          CW_USEDEFAULT,
+                          CW_USEDEFAULT,
+						  cx,
+						  cy,
+                          NULL,
+                          NULL,
+                          g_hInstance,
+                          NULL);
+
+    if (!g_hWnd)
+	{
+        return FALSE;
+	}
+/*
+#ifdef __NPROTECT__
+
+#ifdef __NPROTECT_OLD_VERSION__
+	int nProtectResult ;
+	// ### nProtect ###
+	if( (nProtectResult = RunNPROTECT()) != NPROTECT_OK )
+	{
+		char szTemp[256];
+		wsprintf(szTemp,"nProtect가 실행되지 않았습니다.\n매크로 프로그램이나 해킹 프로그램을 사용한 경우가 아니라면 \n bug@darkeden.com 으로 메일을 보내주시기 바랍니다.[ErrorCode:%d]",nProtectResult);
+		MessageBox(NULL, szTemp,"nProtect Error", MB_OK);
+		CloseNPROTECT();
+		return FALSE;
+	}	
+	
+	if(g_bForceExitBynProtect2 )
+	{
+		CloseNPROTECT();
+		return FALSE;
+	}
+
+#elif !defined(__NPROTECT_OLD_VERSION__)
+	if( RunNPROTECT() != NPROTECT_OK )
+	{
+		CloseNPROTECT();
+		return FALSE;
+	}
+	
+	if( g_bForceExitBynProtect == true ) 
+	{
+		char szTemp[256];
+		
+		sprintf(szTemp,"NProtect의 %d 에러 입니다. 다크에덴을 종료합니다.",g_nProtectErrorMessage);
+		MessageBox(NULL,szTemp, "Error", MB_OK);
+		return FALSE;
+	}
+#endif
+
+#endif*/
+
+	//
+    //ShowWindow(g_hWnd, nCmdShow);
+    //UpdateWindow(g_hWnd);
+    //SetFocus(g_hWnd);
+
+	//---------------------------------------------------
+	// DirectX Version check
+	//---------------------------------------------------
+	//if (!CheckDXVersion())
+	//{
+	//	return 0;
+	//}
+
+	// cursor를 없애준다.
+	SetCursor(NULL);
+	ShowCursor( FALSE );
+
+	// window를 보여준다.
+	ShowWindow(g_hWnd, nCmdShow);
+    UpdateWindow(g_hWnd);
+    SetFocus(g_hWnd);
+//by viva
+#ifdef __NPROTECT__
+
+#ifdef __NPROTECT_OLD_VERSION__
+	int nProtectResult ;
+	// ### nProtect ###
+	if( (nProtectResult = RunNPROTECT()) != NPROTECT_OK )
+	{
+		char szTemp[256];
+		wsprintf(szTemp,"nProtect가 실행되지 않았습니다.\n매크로 프로그램이나 해킹 프로그램을 사용한 경우가 아니라면 \n bug@dklegend.com 으로 메일을 보내주시기 바랍니다.[ErrorCode:%d]",nProtectResult);
+		MessageBox(NULL, szTemp,"nProtect Error", MB_OK);
+		CloseNPROTECT();
+		return FALSE;
+	}	
+	
+	if(g_bForceExitBynProtect2 )
+	{
+		CloseNPROTECT();
+		return FALSE;
+	}
+
+#elif !defined(__NPROTECT_OLD_VERSION__)
+#if __CONTENTS(__NPROTECT)
+	if( RunNPROTECT() != NPROTECT_OK )
+	{
+		CloseNPROTECT();
+		return FALSE;
+	}
+	
+	if( g_bForceExitBynProtect == true )
+	{
+		char szTemp[256];
+		
+		sprintf(szTemp,"NProtect의 %d 에러 입니다. 다크에덴을 종료합니다.",g_nProtectErrorMessage);
+		MessageBox(NULL,szTemp, "Error", MB_OK);
+		return FALSE;
+	}
+#endif //__NPROTECT
+#endif
+
+#endif
+
+
+	//---------------------------------------------------
+	// Init Game
+	//---------------------------------------------------
+	return InitGame();
+}
+
+
+//extern void OutputMemorySize();
+//#include "MemoryCheck.cpp"
+//#include "UIDialog.h"
+
+//-----------------------------------------------------------------------------
+// Check TerriblePatch
+//-----------------------------------------------------------------------------
+bool
+CheckTerriblePatch()
+{
+	bool bCrash = false;
+	int errorCode = 0;
+
+	//-----------------------------------------------------------------------------
+	// ImageObject Patch
+	//-----------------------------------------------------------------------------
+	AppendPatchTable apt;
+
+/*
+#ifdef _DEBUG
+	apt.Init( 2 );	
+	
+	//-----------------------------------------------------------------------------
+	// ImageObject Patch
+	//-----------------------------------------------------------------------------	
+	apt[0].SetOriginalInfo( FILE_SPRITE_IMAGEOBJECT, 47564158, 0x04CA );
+	apt[0].AddAppendInfo( "Data\\Image\\New18ImageObject.spk", 1968462, 0x82 );
+	apt[0].AddAppendInfo( "Data\\Image\\New22ImageObject.spk", 5706400, 0x8A );
+	apt[0].SetFinalInfo( 55239016, 0x05D6 );
+
+	//-----------------------------------------------------------------------------
+	// Creature Patch
+	//-----------------------------------------------------------------------------
+	apt[1].SetOriginalInfo( FILE_ISPRITE_CREATURE, 47722828, 0x2A4E );
+	apt[1].AddAppendInfo( "Data\\Image\\New18Creature.ispk", 4343846, 0x0418 );
+	apt[1].AddAppendInfo( "Data\\Image\\New22Creature.ispk", 9813886, 0x0798 );
+	apt[1].SetFinalInfo( 61880556, 0x35FE );
+
+	
+	//-----------------------------------------------------------------------------
+	// Save
+	//-----------------------------------------------------------------------------
+	std::ofstream fileAppendInfo2(FILE_INFO_APPENDPATCH, ios::binary);
+	apt.SaveToFile( fileAppendInfo2 );
+	fileAppendInfo2.close();
+#endif
+*/
+
+	//-----------------------------------------------------------------------------
+	// Load
+	//-----------------------------------------------------------------------------
+	ivfstream fileAppendInfo;
+	if (!FileOpenBinary(g_pFileDef->getProperty("FILE_INFO_APPENDPATCH").c_str(), fileAppendInfo))
+		return false;
+	apt.LoadFromFile( fileAppendInfo );
+	fileAppendInfo.close();
+
+	
+
+	//-----------------------------------------------------------------------------
+	// Append 패치를 한다.
+	//-----------------------------------------------------------------------------
+	errorCode = 0;
+	for (int i=0; i<apt.GetSize(); i++)
+	{
+		errorCode ++;
+		
+		if(errorCode == 31)
+			int n = 0;
+
+		if (!apt[i].ExecutePatch())
+		{
+			bCrash = true;
+			break;
+		}
+
+		errorCode ++;
+		if (!apt[i].CheckFinalInfo())
+		{
+			#ifdef OUTPUT_DEBUG				
+			#else
+				bCrash = true;
+				break;
+			#endif
+		}
+		
+	}
+	
+	//-----------------------------------------------------------------------
+	// 심각한 상황인가? - -; 
+	//-----------------------------------------------------------------------
+	if (bCrash)
+	{
+		char str[256];
+		sprintf(str, "화일이 손상되었습니다. 다크에덴 운영팀으로 연락주세요 [에러코드:%d]", errorCode);
+		MessageBox(NULL, str, PROGRAM_TITLE, MB_OK);
+
+		return false;
+	}
+
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Check TerriblePatch
+//-----------------------------------------------------------------------------
+// auto-patch의 실수로 인하여
+// 어쩔 수 없이 실행화일에서 체크해서 패치해야하는 경우이다.
+// 그리하여.. 함수 이름이 이렇게 되었다.  --;;
+//-----------------------------------------------------------------------------
+/*
+bool
+CheckTerriblePatchOLD()
+{
+	bool bCrash = false;
+	int errorCode = 0;
+		
+	//-----------------------------------------------------------------------
+	//
+	// Update SpritePack
+	//
+	//-----------------------------------------------------------------------
+	// Data\\Image\\에 New18ImageObjectSPK.spk가 있으면..
+	// ImageObject의 개수는 전체개수와 같은데.. 용량이 다르다면
+	// "패치 작업을 하는데 시간이 좀 걸립니다."라고 메시지를 띄워준다.
+	// 전체개수만큼 SPK 크기를 잡고 
+	// ImageObjectSPK를 SPK로 Load한다.
+	// New18ImageObjectSPK를 SPK로 Load한다.
+	// SPK를 ImageObjectSPK에 write한다.
+	// New18ImageObjectSPK.spk를 지운다.
+	//
+	// [22번 패치할때부터는..]
+	// 기존에 잘못된 부분이 다 덮혀버릴정도의 패치화일이 준비되어 있으므로
+	// 18패치화일이 있으면 18번 패치위치부터 쓰고
+	// 22패치화일이 있으면 22번 패치위치부터 쓰면... 된다.
+	const int numWrite = 2;
+	char newSpkFilename[numWrite][80] = 
+	{ 
+		"Data\\Image\\New18ImageObject.spk", 
+		"Data\\Image\\New22ImageObject.spk" 
+	};
+	const long writePosition[numWrite] = 
+	{
+		47564158,	// 18번 패치 적용할 file position
+		49532618	// 22번 패치 적용후 file position
+	};
+	const WORD orgSpkSize[numWrite] = 
+	{
+		0x054C,		// 18번 패치 적용후 개수
+		0x05D6		// 22번 패치 적용후 개수
+	};
+	const long orgFileSize[numWrite] = 
+	{
+		49532618,	// 18번 패치 적용후 화일사이즈
+		55239016	// 22번 패치 적용후 화일사이즈
+	};
+
+	WORD spkSize;
+	std::ifstream imageObjectFile;//(FILE_ISPRITEINDEX_CREATURE, ios::binary);
+	if (!FileOpenBinary(FILE_SPRITE_IMAGEOBJECT, imageObjectFile))
+		return false;
+	imageObjectFile.read((char*)&spkSize, 2);	// Sprite의 개수
+	imageObjectFile.close();
+	
+	//-----------------------------------------------------------------------
+	// 용량 다르면 패치
+	//-----------------------------------------------------------------------
+	bool bImageObjectPatch;
+	if (spkSize==orgSpkSize[numWrite-1])
+	{
+		 bImageObjectPatch = false;
+	}
+	else
+	{
+		bImageObjectPatch = true;		
+	}
+
+	//-----------------------------------------------------------------------
+	// 패치를 적용시켜야 하는 경우
+	//-----------------------------------------------------------------------
+	if (bImageObjectPatch)
+	{
+		//MessageBox(NULL, "다크에덴 데이타를 정리하고 실행할 예정입니다.\n OK를 누르고 반응이 없더라도 자동으로 실행되니 잠시만 기
+
+다려주세요.", PROGRAM_TITLE, MB_OK);
+
+		for (int i=0; i<numWrite; i++)
+		{
+			std::ifstream newfile(newSpkFilename[i], ios::binary | ios::nocreate);				
+			
+			//-------------------------------------------------------------
+			// 패치 화일이 없는 경우.. 다음꺼 체크
+			//-------------------------------------------------------------
+			if (!newfile.is_open())
+			{
+				continue;
+			}
+			else
+			{
+				SetProgressBarText("패치 화일을 적용시키고 있습니다.");
+				UpdateProgressBar();
+
+				std::ofstream imageObjectFile(FILE_SPRITE_IMAGEOBJECT, ios::binary | ios::ate);
+
+				newfile.seekg( 2 );	// size부분 제외
+				imageObjectFile.seekp( writePosition[i] );
+
+				WRITE_FROM_FILE( imageObjectFile, newfile );
+
+				newfile.close();
+				
+				// 개수 변경
+				spkSize = orgSpkSize[i];
+				imageObjectFile.seekp( 0, ios::beg );
+				imageObjectFile.write((const char*)&spkSize, 2);
+				imageObjectFile.close();
+
+				// 패치화일을 지운다.
+				remove( newSpkFilename[i] );
+			}
+		}
+	}
+	
+	
+	//-----------------------------------------------------------------------
+	//
+	// Append SpritePack
+	//
+	//-----------------------------------------------------------------------
+	// 
+	//-----------------------------------------------------------------------
+	// Data\\Image\\New18Creature.ispk - 2001.9.26
+	// 원래있던화일, 추가되는화일, 합한후개수
+	// 이 방식에서는 spki는 따로 덮어야 한다.
+	if (!bCrash)
+	{
+		const int numAppend = 2;
+		char orgFilename[numAppend][80] = 
+		{ 
+			"Data\\Image\\Creature.ispk", 
+			"Data\\Image\\Creature.ispk" 
+		};
+		char appFilename[numAppend][80] = 
+		{ 
+			"Data\\Image\\New18Creature.ispk", 
+			"Data\\Image\\New22Creature.ispk" 
+		};
+
+		int total[numAppend] = 
+		{ 
+			0x2E66, 
+			0x35FE 
+		};
+
+		// 여러번 append해서 total에 도달하게 되는 경우가 있다.
+
+		WORD orgNum, appNum;
+			
+		for (int i=0; i<numAppend; i++)
+		{
+			
+			class fstream orgFile(orgFilename[i], ios::in | ios::out | ios::binary | ios::nocreate | ios::ate);
+			std::ifstream appFile(appFilename[i], ios::binary | ios::nocreate);		
+		
+			//-------------------------------------------------------------
+			// 원래 화일이 없는 경우 - -;
+			//-------------------------------------------------------------
+			if (!orgFile.is_open())
+			{
+				bCrash = true;
+				errorCode = 1;
+				break;			
+			}			
+			
+			orgFile.seekg( 0, ios::beg );
+			orgFile.read((char*)&orgNum, 2);	// Sprite의 개수
+			
+			if (orgNum>=total[i])
+			{
+				// 이미 패치된 상황이다. 다음꺼 체크.
+				orgFile.close();
+				appFile.close();
+				continue;
+			}
+				
+			//-------------------------------------------------------------
+			// app할께 없는 경우
+			//-------------------------------------------------------------
+			if (!appFile.is_open())
+			{
+				// 개수는 다른데 app할것이 없는 경우
+				bCrash = true;
+				errorCode = 2;
+				break;
+			}
+
+			// total size를 체크해서 append할 필요가 있는지 체크한다.
+			appFile.read((char*)&appNum, 2);	// Sprite의 개수
+
+			//-------------------------------------------------------------
+			// 두개 합쳐서 total이 된다면..		
+			//-------------------------------------------------------------
+			if (orgNum+appNum == total[i])
+			{				
+				SetProgressBarText("패치 화일을 적용시키고 있습니다.");
+				UpdateProgressBar();
+
+				// orgFile의 끝으로..
+				orgFile.seekp(0, ios::end);
+
+				WRITE_FROM_FILE( orgFile, appFile );
+
+				// 원래 화일의 개수를 바꿔준다.
+				orgFile.seekp(0, ios::beg);
+				orgFile.write((const char*)&total[i], 2);
+
+				orgFile.close();
+				appFile.close();
+
+				//---------------------------------------------------------------
+				// App화일은 지운다.
+				//---------------------------------------------------------------
+				remove( appFilename[i] );
+			}
+			//-------------------------------------------------------------
+			// size 콩가루.. - -;
+			//-------------------------------------------------------------
+			else
+			{
+				// 두 개 합쳐도 제대로된 숫자가 나오지 않는 경우
+				// 심각한 상황이다.
+				bCrash = true;
+				errorCode = 3;
+				break;
+			}
+		}
+	}
+	
+	//-----------------------------------------------------------------------
+	// 심각한 상황이다.
+	//-----------------------------------------------------------------------
+	if (bCrash)
+	{
+		char str[256];
+		sprintf(str, "화일이 손상되었습니다. 다크에덴 운영팀으로 연락주세요 [에러코드:%d]", errorCode);
+		MessageBox(NULL, str, PROGRAM_TITLE, MB_OK);
+
+		return false;
+	}
+
+	return true;
+}
+*/
+
+//-----------------------------------------------------------------------------
+// ConvertScreenEffect
+//-----------------------------------------------------------------------------
+// 기존의 AlphaEffect를 ScreenEffect에 맞게 바꾼다.
+//-----------------------------------------------------------------------------
+/*
+bool
+ConvertScreenEffect()
+{
+	//------------------------------------------------------------	
+	// Screen SpritePack 확인
+	//------------------------------------------------------------	
+	
+//	std::ifstream fileSPK2(FILE_SPRITE_SCREENEFFECT, ios::binary | ios::nocreate);
+//	if (fileSPK2.is_open())
+//	{
+//		TYPE_SPRITEID num;
+//		fileSPK2.read((char*)&num, SIZE_SPRITEID);
+//
+//		// 크기가 같으면.. convert할 필요 없다.
+//		if (num >= 0x06BE)
+//		{			
+//			return false;
+//		}
+//
+//		fileSPK2.close();
+//	}
+	
+/*	std::ifstream fileSPK2("Data\\Info\\EffectScreenConvert.inf", ios::binary | ios::nocreate);
+	if (fileSPK2.is_open())
+	{
+		fileSPK2.close();
+		return false;		
+	}
+
+	
+	const int MAX_EST = 135;
+	const int est[MAX_EST] =
+	{
+		SCR_EFFECTSPRITETYPE_ACID_BALL_1,		// 날아가기
+		SCR_EFFECTSPRITETYPE_ACID_BALL_2,		// 터지기
+		SCR_EFFECTSPRITETYPE_ACID_BOLT_1,		// 날아가기
+		SCR_EFFECTSPRITETYPE_ACID_BOLT_2,		// 터지기	
+		SCR_EFFECTSPRITETYPE_ACID_TOUCH,	
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_SHIELD,	// 방어막
+		SCR_EFFECTSPRITETYPE_AURA_BALL_1,	// 캐스팅
+		SCR_EFFECTSPRITETYPE_AURA_BALL_2,	// 날아가기
+		SCR_EFFECTSPRITETYPE_AURA_BALL_3,	// 터지기
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_1,	// 캐스팅 - 바닥에 붙는 
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_2,	// 캐스팅 - 바닥에서 위로 올라가기
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_3,	// 붙어서 시작
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_4,	// 붙어서 반복
+		SCR_EFFECTSPRITETYPE_AURA_PRISM_5,	// 붙어서 끝
+		SCR_EFFECTSPRITETYPE_AURA_SHIELD_1,	// 캐스팅
+		SCR_EFFECTSPRITETYPE_AURA_SHIELD_2,	// 지속
+		SCR_EFFECTSPRITETYPE_AURA_SHIELD_3,	// 맞을 때 번쩍~
+		SCR_EFFECTSPRITETYPE_AURA_RING,
+		SCR_EFFECTSPRITETYPE_BLESS_GROUND_1,
+		SCR_EFFECTSPRITETYPE_BLESS_GROUND_2,
+		SCR_EFFECTSPRITETYPE_BLESS_GROUND_3,
+		SCR_EFFECTSPRITETYPE_BLESS_GROUND_4,
+		SCR_EFFECTSPRITETYPE_BLESS_ING,		// 반복 
+		SCR_EFFECTSPRITETYPE_BLESS,			// 하나 반복으로 바뀜 //시작	
+		SCR_EFFECTSPRITETYPE_CHAOS_COMBO,	
+		SCR_EFFECTSPRITETYPE_CONTINUAL_LIGHT_1,
+		SCR_EFFECTSPRITETYPE_CONTINUAL_LIGHT_2,
+		SCR_EFFECTSPRITETYPE_CONTINUAL_LIGHT_3,
+		SCR_EFFECTSPRITETYPE_CREATE_HOLY_WATER_1,
+		SCR_EFFECTSPRITETYPE_CREATE_HOLY_WATER_2,
+		SCR_EFFECTSPRITETYPE_CREATE_HOLY_WATER_3,
+		SCR_EFFECTSPRITETYPE_CURE_PARALYSIS,		
+		SCR_EFFECTSPRITETYPE_CURE_CRITICAL_WOUND_1,
+		SCR_EFFECTSPRITETYPE_CURE_CRITICAL_WOUND_2,
+		SCR_EFFECTSPRITETYPE_CURE_CRITICAL_WOUND_3,
+		SCR_EFFECTSPRITETYPE_CURE_SERIOUS_WOUND_1,
+		SCR_EFFECTSPRITETYPE_CURE_SERIOUS_WOUND_2,
+		SCR_EFFECTSPRITETYPE_CURE_SERIOUS_WOUND_3,
+		SCR_EFFECTSPRITETYPE_CURE_LIGHT_WOUND_1,
+		SCR_EFFECTSPRITETYPE_CURE_LIGHT_WOUND_2,
+		SCR_EFFECTSPRITETYPE_CURE_LIGHT_WOUND_3,
+		SCR_EFFECTSPRITETYPE_CURE_POISON,
+		SCR_EFFECTSPRITETYPE_DETECT_HIDDEN,
+		SCR_EFFECTSPRITETYPE_DOUBLE_IMPACT,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING1_1,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING1_2,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING1_3,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING2_1,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING2_2,
+		SCR_EFFECTSPRITETYPE_ENCHANT_CASTING2_3,		
+		SCR_EFFECTSPRITETYPE_EXPLOSION_OLD,
+		SCR_EFFECTSPRITETYPE_HEALING_CASTING_1,
+		SCR_EFFECTSPRITETYPE_HEALING_CASTING_2,
+		SCR_EFFECTSPRITETYPE_HEALING_CASTING_3,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_AR_MALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_SMG_MALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_TR_MALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_SG_MALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_AR_FEMALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_SMG_FEMALE,		
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_TR_FEMALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_SG_FEMALE,
+		SCR_EFFECTSPRITETYPE_HOLY_SHOOTING_HIT,
+		SCR_EFFECTSPRITETYPE_HOLY_WATER_1,	// 깨지는거
+		SCR_EFFECTSPRITETYPE_HOLY_WATER_2,	// 실패? - -;	
+		SCR_EFFECTSPRITETYPE_HURRICANE_COMBO,	
+		SCR_EFFECTSPRITETYPE_LIGHT_1,
+		SCR_EFFECTSPRITETYPE_LIGHT_2,
+		SCR_EFFECTSPRITETYPE_LIGHT_3,
+		SCR_EFFECTSPRITETYPE_POISONOUS_HAND,
+		SCR_EFFECTSPRITETYPE_POTENTIAL,
+		SCR_EFFECTSPRITETYPE_PROTECTION_FROM_CURSE,	
+		SCR_EFFECTSPRITETYPE_PROTECTION_FROM_PARALYSIS,		
+		SCR_EFFECTSPRITETYPE_PROTECTION_FROM_POISON,
+		SCR_EFFECTSPRITETYPE_RAINBOW_SLASHER,
+		SCR_EFFECTSPRITETYPE_REMOVE_CURSE,
+		SCR_EFFECTSPRITETYPE_RESTORE_1,
+		SCR_EFFECTSPRITETYPE_RESTORE_2,
+		SCR_EFFECTSPRITETYPE_RESTORE_3,
+		SCR_EFFECTSPRITETYPE_GUN_AR_MALE,
+		SCR_EFFECTSPRITETYPE_GUN_SMG_MALE,
+		SCR_EFFECTSPRITETYPE_GUN_AR_FEMALE,
+		SCR_EFFECTSPRITETYPE_GUN_SMG_FEMALE,
+		SCR_EFFECTSPRITETYPE_GUN_TR_MALE,
+		SCR_EFFECTSPRITETYPE_GUN_SG_MALE,
+		SCR_EFFECTSPRITETYPE_GUN_TR_FEMALE,
+		SCR_EFFECTSPRITETYPE_GUN_SG_FEMALE,
+		SCR_EFFECTSPRITETYPE_SCREW_SLASHER,
+		SCR_EFFECTSPRITETYPE_SINGLE_BLOW,
+		SCR_EFFECTSPRITETYPE_SMOKE,	
+		SCR_EFFECTSPRITETYPE_SMOKE_1,	
+		SCR_EFFECTSPRITETYPE_SMOKE_2,	
+		SCR_EFFECTSPRITETYPE_SMOKE_3,	
+		SCR_EFFECTSPRITETYPE_SMOKE_4,	
+		SCR_EFFECTSPRITETYPE_SNAKE_COMBO_OLD,
+		SCR_EFFECTSPRITETYPE_SPIRAL_SLAY,
+		SCR_EFFECTSPRITETYPE_STRIKING_ING_1,
+		SCR_EFFECTSPRITETYPE_STRIKING_ING_2,
+		SCR_EFFECTSPRITETYPE_STRIKING_ING_3,
+		SCR_EFFECTSPRITETYPE_STRIKING_1,
+		SCR_EFFECTSPRITETYPE_STRIKING_2,
+		SCR_EFFECTSPRITETYPE_STRIKING_3,	
+		SCR_EFFECTSPRITETYPE_THUNDER_SPARK,
+		SCR_EFFECTSPRITETYPE_TRIPLE_BREAK,
+		SCR_EFFECTSPRITETYPE_TRIPLE_SLASHER,
+		SCR_EFFECTSPRITETYPE_TWIN_BREAK,
+		SCR_EFFECTSPRITETYPE_VAMPIRE_DEATH,
+		SCR_EFFECTSPRITETYPE_WILD_SMASH,	
+		SCR_EFFECTSPRITETYPE_DETECT_INVISIBILITY,
+		SCR_EFFECTSPRITETYPE_IDENTIFY_1x1,
+		SCR_EFFECTSPRITETYPE_IDENTIFY_1x3,
+		SCR_EFFECTSPRITETYPE_IDENTIFY_2x2,
+		SCR_EFFECTSPRITETYPE_IDENTIFY_2x3,
+		SCR_EFFECTSPRITETYPE_SACRIFICE_1,			// casting
+		SCR_EFFECTSPRITETYPE_SACRIFICE_2,			// 지속
+		SCR_EFFECTSPRITETYPE_SNAKE_COMBO,
+		SCR_EFFECTSPRITETYPE_SWORD_WAVE_1,			// frame은 따로 없다.
+		SCR_EFFECTSPRITETYPE_SWORD_WAVE_2,			// frame은 따로 없다.
+		SCR_EFFECTSPRITETYPE_SWORD_WAVE_3,			// frame은 따로 없다.
+		SCR_EFFECTSPRITETYPE_TORNADO_SEVER_1,		// 바닥에 찍히는거 (5프레임 후에 출력)
+		SCR_EFFECTSPRITETYPE_TORNADO_SEVER_2,		// 몸에 붙는거
+
+		SCR_EFFECTSPRITETYPE_EXPLOSION,
+
+		// 2001.9.3
+		SCR_EFFECTSPRITETYPE_LIGHTNING_HANDS_1,8
+		SCR_EFFECTSPRITETYPE_LIGHTNING_HANDS_2,		// 반복
+		SCR_EFFECTSPRITETYPE_LIGHTNING_HANDS_3,	
+		
+		// 2001.9.6
+		SCR_EFFECTSPRITETYPE_PROTECTION_FROM_ACID_1,		// 시작
+		SCR_EFFECTSPRITETYPE_PROTECTION_FROM_ACID_2,		// 지속
+		
+		// 2001.10.8
+		SCR_EFFECTSPRITETYPE_EXPLOSION_2,
+		SCR_EFFECTSPRITETYPE_EXPLOSION_3,
+		SCR_EFFECTSPRITETYPE_CURE_ALL_1,				// 시작
+		SCR_EFFECTSPRITETYPE_CURE_ALL_2,				// bless 뿌려주기
+		SCR_EFFECTSPRITETYPE_ENCHANT_1x1,
+		SCR_EFFECTSPRITETYPE_ENCHANT_1x3,
+		SCR_EFFECTSPRITETYPE_ENCHANT_2x2,
+		SCR_EFFECTSPRITETYPE_ENCHANT_2x3		
+	};
+
+	//------------------------------------------------------------	
+	// convert할때.. progress.. 냠..
+	//------------------------------------------------------------	
+	SetProgressBarText("데이타 화일을 체크중입니다.");
+	SetProgressBarCount( MAX_EST );	
+	
+	int cx = GetSystemMetrics(SM_CXSCREEN);
+	int cy = GetSystemMetrics(SM_CYSCREEN);	
+	
+	ShowWindow(g_hWndProgress, SW_HIDE);
+	CDirectDraw::Init(g_hWndProgress, cx, cy, CDirectDraw::FULLSCREEN);	
+	
+	MoveWindow(g_hWndProgress, 
+				(cx-progressBarWidth)/2, 
+				(cy-progressBarHeight)/2, 
+				progressBarWidth, 
+				progressBarHeight, 
+				TRUE);
+	ShowWindow(g_hWndProgress, SW_SHOW);
+	
+
+	// 16 bit 모드로 바꿔야 한다.
+	//DDSURFACEDESC2 ddsd;
+	//CDirectDraw::GetDD()->GetDisplayMode( &ddsd );
+	//CDirectDraw::GetDD()->SetDisplayMode(800, 600, 16, 0, 0);
+	
+	
+	//------------------------------------------------------------	
+	// 필요한 Frame 뽑기
+	//------------------------------------------------------------	
+	COrderedList<int> intList;
+
+	std::ifstream efpkFile(FILE_EFRAME_ALPHAEFFECT, ios::binary);
+	CEffectFramePack	EFPK;
+	EFPK.LoadFromFile( efpkFile );
+	efpkFile.close();
+
+	CEffectFramePack	NewEFPK;
+	NewEFPK.Init( MAX_EST );
+	
+	//------------------------------------------------------------	
+	// 필요한 EFPK를 생성하면서 사용된 SpriteID도 구한다.
+	//------------------------------------------------------------	
+	for (int e=0; e<MAX_EST; e++)
+	{
+		int etype = est[e];
+
+		DIRECTION_EFFECTFRAME_ARRAY& DEA = EFPK[etype];
+
+		NewEFPK[e] = DEA;
+
+		for (int d=0; d<8; d++)
+		{
+			EFFECTFRAME_ARRAY& EA = DEA[d];
+			
+			for (int f=0; f<EA.GetSize(); f++)
+			{
+				CEffectFrame& Frame = EA[f];
+
+				int spriteID = Frame.GetSpriteID();
+
+				intList.Add( spriteID );
+			}
+		}
+
+		UpdateProgressBar();
+	}	
+
+	EFPK.Release();
+
+	//------------------------------------------------------------	
+	// Alpha --> Normal 준비..
+	//------------------------------------------------------------	
+	CSpriteSurface	surface;
+	surface.InitOffsurface( 640, 480, DDSCAPS_SYSTEMMEMORY );	
+
+	POINT point0 = { 0, 0 };
+	
+	 
+	CAlphaSprite565		ASPR;
+
+	std::ifstream aspkiFile(FILE_ASPRITEINDEX_ALPHAEFFECT, ios::binary);
+	std::ifstream aspkFile(FILE_ASPRITE_ALPHAEFFECT, ios::binary);	
+
+	TYPE_SPRITEID totalNum;
+	int spriteNum = intList.GetSize();
+
+	CSpritePack* pSPK = new CSpritePack;
+	pSPK->Init( spriteNum, CDirectDraw::Is565() );
+
+	aspkFile.read((char*)&totalNum, 2);
+
+	int* pNewID = new int [totalNum];
+
+	COrderedList<int>::DATA_LIST::const_iterator iID = intList.GetIterator();
+	WORD *lpSurface, lPitch;
+
+	//------------------------------------------------------------	
+	// convert할때.. progress.. 냠..
+	//------------------------------------------------------------	
+	SetProgressBarText("데이타 화일을 변경중입니다.");
+	SetProgressBarCount( spriteNum/8 );	
+	
+
+	//------------------------------------------------------------	
+	// Alpha --> Normal
+	//------------------------------------------------------------		
+	for (int sid=0; sid<spriteNum; sid++)
+	{
+		int spriteID = *iID;
+		
+		aspkFile.seekg( 0 );
+		aspkiFile.seekg( 0 );		
+		
+		//--------------------------------------------------------
+		// Load할 FilePointer를 읽어온다.
+		//--------------------------------------------------------
+		long fp;	
+		aspkiFile.seekg( 2 + spriteID*4 );		// 2(num) + spriteID * (4 bytes)
+		aspkiFile.read((char*)&fp, 4);		
+		aspkFile.seekg( fp );
+
+		//--------------------------------------------------------
+		// Load
+		//--------------------------------------------------------
+		ASPR.LoadFromFile( aspkFile );
+
+		//--------------------------------------------------------
+		// 크기 계산.. 걍 - -
+		//--------------------------------------------------------
+		int width = ASPR.GetWidth();
+		int height = ASPR.GetHeight();
+		
+		//--------------------------------------------------------
+		// AlphaSprite를 출력한 후에 
+		// Sprite를 생성한다.
+		//--------------------------------------------------------
+		surface.FillSurface( 0 );
+
+		surface.LockW(lpSurface, lPitch);	
+		surface.BltAlphaSprite( &point0, &ASPR );			
+		((*pSPK)[sid]).SetPixel(lpSurface, lPitch, width, height);
+
+		surface.Unlock();
+	
+		// 원래는 ID가 spriteID였던게 sid로 바뀌게 된다.
+		pNewID[ spriteID ] = sid;
+
+		if ((sid & 0x00000007)==0x00000007)
+		{
+			UpdateProgressBar();	
+		}
+
+		iID++;
+	}
+
+	aspkiFile.close();
+	aspkFile.close();
+
+	// 원래대로
+	//CDirectDraw::GetDD()->RestoreDisplayMode();
+
+	//------------------------------------------------------------	
+	// SpriteID를 수정한다.
+	//------------------------------------------------------------	
+	int numFPK = NewEFPK.GetSize();
+	for (e=0; e<numFPK; e++)
+	{
+		DIRECTION_EFFECTFRAME_ARRAY& DEA = NewEFPK[e];
+
+		for (int d=0; d<8; d++)
+		{
+			EFFECTFRAME_ARRAY& EA = DEA[d];
+			
+			for (int f=0; f<EA.GetSize(); f++)
+			{
+				CEffectFrame& Frame = EA[f];
+
+				int cx = Frame.GetCX();
+				int cy = Frame.GetCY();
+				int light = Frame.GetLight();
+				int spriteID = pNewID[ Frame.GetSpriteID() ];
+
+				Frame.Set( spriteID, cx, cy, light );
+			}
+		}
+	}
+
+	delete [] pNewID;
+
+	//------------------------------------------------------------	
+	// FramePack저장
+	//------------------------------------------------------------	
+	std::ofstream fileFPK(FILE_EFRAME_SCREENEFFECT, ios::binary);
+	std::ofstream fileFPKI(FILE_EFRAMEINDEX_SCREENEFFECT, ios::binary);
+	NewEFPK.SaveToFile( fileFPK, fileFPKI );
+	fileFPK.close();
+	fileFPKI.close();
+	
+	//------------------------------------------------------------	
+	// SpritePack 저장
+	//------------------------------------------------------------	
+	std::ofstream fileSPK(FILE_SPRITE_SCREENEFFECT, ios::binary);
+	std::ofstream fileSPKI(FILE_SPRITEINDEX_SCREENEFFECT, ios::binary);
+	pSPK->SaveToFile( fileSPK, fileSPKI );
+	fileSPK.close();
+	fileSPKI.close();
+
+	delete pSPK;
+
+	ShowWindow(g_hWndProgress, SW_HIDE);
+	CDirectDraw::ReleaseAll();
+	
+	MoveWindow(g_hWndProgress, 
+				(cx-progressBarWidth)/2, 
+				(cy-progressBarHeight)/2, 
+				progressBarWidth, 
+				progressBarHeight, 
+				TRUE);
+	ShowWindow(g_hWndProgress, SW_SHOW);
+
+	//------------------------------------------------------------	
+	// 변환 체크
+	//------------------------------------------------------------	
+	std::ofstream fileCheck("Data\\Info\\EffectScreenConvert.inf", ios::binary);	
+	int a = 1;
+	fileCheck.write((const char*)&a, 4);
+	fileCheck.close();
+
+	return true;
+}
+*/
+//------------------------------------------------------------------------
+// ApplyPatch 
+//------------------------------------------------------------------------
+// 갑자기 압축을 하게 되는 바람에... - -;
+//------------------------------------------------------------------------
+bool
+ApplyPatch()
+{	
+	//-----------------------------------------------------------------
+	// 현재 version
+	//-----------------------------------------------------------------
+//	std::ifstream versionFile(FILE_INFO_VERSION, ios::binary);
+//	int version;
+//	versionFile.read((char*)&version, 4);
+//	versionFile.close();
+
+	//-----------------------------------------------------------------
+	// 패치압축화일이 있나 확인
+	//-----------------------------------------------------------------
+//	char packFilename[256];
+//	char infoFilename[256];
+
+//	struct _finddata_t	FileData;
+//	long				hFile;
+
+	//-----------------------------------------------------------------
+	// *.mpk file을 찾는다.
+	//-----------------------------------------------------------------
+//	if ( (hFile = _findfirst( "*.mpk", &FileData )) != -1L )
+//	{		
+//		int files = 1;
+//		do
+//		{
+//			strcpy(packFilename, FileData.name);
+//			files ++;
+//		}
+//		while (_findnext( hFile, &FileData ) == 0);
+//
+//		_findclose( hFile );			
+
+		//-----------------------------------------------------------------
+		// 패치압축화일의 압축 해제 
+		//-----------------------------------------------------------------
+//		_mkdir( "Update" );
+//
+//		SetProgressBarText("패치 화일의 압축을 해제하고 있습니다.");
+//
+//		MZLib mzlib;
+//
+//		// 압축할때 Updater경로를 같이 저장했으므로 같이 풀린다.
+//		mzlib.Uncompress( packFilename );	
+//
+//		//-----------------------------------------------------------------
+//		// infofile이름 결정 - packFilename에 따라서..
+//		//-----------------------------------------------------------------
+//		int len = strlen(packFilename);
+//		char str[256];
+//		strncpy(str, packFilename, len-4);	// 걍 .까지 빼준다.
+//		str[len-4] = '\0';
+//		sprintf(infoFilename, "Update\\%s.inf", str);
+//
+//	}
+	//-----------------------------------------------------------------
+	// mpk화일이 없는 경우는 수동패치인 경우를 체크해봐야한다.
+	// packFilename이 몇번 version에 적용되는건지 알아낸다.
+	//-----------------------------------------------------------------
+//	else
+//	{
+//		/*
+//		char* pUnder = strchr(packFilename+5, "_");
+//		if (pUnder!=NULL)
+//		{   
+//			char strVersion[10];
+//			strncpy(strVersion, packFilename+5, pUnder - packFilename+5);
+//			int versionFrom = atoi(strVersion);
+//		}
+//		*/
+//		
+//		// 현재 버전에 맞는 패치화일을 찾는다.
+//		sprintf(infoFilename, "Update\\Patch%d_*.inf", version);
+//
+//		if ( (hFile = _findfirst( infoFilename, &FileData )) != -1L )
+//		{	
+//			int files = 1;
+//			do
+//			{
+//				sprintf(infoFilename, "Update\\%s", FileData.name);
+//				files ++;
+//			}
+//			while (_findnext( hFile, &FileData ) == 0);
+//			
+//			_findclose( hFile );
+//		}
+//		else
+//		{
+//			// 수동패치도 없는 경우 == 현재 버전
+//			return false;
+//		}
+//	}
+//
+//	//-----------------------------------------------------------------
+//	// info 읽기
+//	//-----------------------------------------------------------------	
+//	CreateProgressBar("패치 정보를 체크 중입니다.");
+//	
+//	UpdateManager	UM;
+//	UM.load( infoFilename );
+//
+//	SetProgressBarCount( UM.getNum()+g_numAppendFiles );	
+//
+//	SetProgressBarText("패치 화일을 적용시키고 있습니다.");
+//	
+//	//-----------------------------------------------------------------
+//	// 패치화일 적용
+//	//-----------------------------------------------------------------
+//	int newVersion = 0;
+//	while (!UM.empty())
+//	{
+//		Update* pUpdate = UM.front();
+//		UM.pop_front();
+//		
+//		if (!pUpdate->execute())
+//		{
+//			// -_-;;
+//		}	
+//
+//		// version up인가?
+//		if (pUpdate->getVersion() > newVersion)
+//		{
+//			newVersion = pUpdate->getVersion();
+//		}
+//
+//		UpdateProgressBar();
+//	}
+//
+//	//-----------------------------------------------------------------
+//	// 새 version저장
+//	//-----------------------------------------------------------------
+//	std::ofstream versionFile2(FILE_INFO_VERSION, ios::binary);
+//	versionFile2.write((const char*)&newVersion, 4);
+//	versionFile2.close();
+//	
+//	//-----------------------------------------------------------------
+//	// 패치압축화일 제거
+//	//-----------------------------------------------------------------
+//	remove( packFilename );
+//
+//	//-----------------------------------------------------------------
+//	// 패치화일 제거 - Updater 디렉토리 지우면서 되므로 .. 신경 안 써도 된다.
+//	//-----------------------------------------------------------------
+//
+	return true;
+}
+
+
+#ifdef OUTPUT_DEBUG
+	//-----------------------------------------------------------------------------
+	// Check LogFile
+	//-----------------------------------------------------------------------------
+//	void
+//	CheckCLogFile()
+//	{
+//		_chdir( g_CWD );
+//
+//		char filename[256] = { 0, };
+//		char buffer[256] = { 0, };
+//		char computerName[256] = { 0, };
+//
+//		struct _finddata_t	FileData;
+//		long				hFile;
+//
+//		//-----------------------------------------------------------------
+//		// *.spk file을 찾는다.
+//		//-----------------------------------------------------------------
+//		if ( (hFile = _findfirst( "Data\\UI\\txt\\Log*.txt", &FileData )) != -1L )
+//		{
+//			do
+//			{
+//				sprintf(filename, "Data\\UI\\txt\\%s", FileData.name);
+//				
+//				std::ifstream file( filename, ios::binary );
+//				file.seekg( 0, ios::end );
+//				
+//				long fp = file.tellg();
+//				
+//				file.close();
+//				if (fp == 0)
+//				{
+//					_chmod( filename, _S_IREAD | _S_IWRITE );
+//					remove(filename);	
+//				}
+//				else
+//				{
+//					//copy
+//					if (computerName[0]=='\0')
+//					{
+//						unsigned long numSize = 255;
+//						GetComputerName( computerName,  &numSize );
+//					}
+//					
+//					sprintf(buffer, "\\\\쑥갓\\Log\\%s-%s", computerName, FileData.name);
+//					
+//					_chmod( filename, _S_IREAD | _S_IWRITE );
+//					rename(filename, buffer);						
+//				}
+//			}
+//			
+//			
+//			while (_findnext( hFile, &FileData ) == 0);
+//			
+//			_findclose( hFile );			
+//		}
+//	}
+
+	
+	void
+	CheckLogFile()
+	{
+		_chdir( g_CWD );
+
+		char filename[256] = { 0, };
+		char buffer[256] = { 0, };
+		char computerName[256] = { 0, };
+
+		struct _finddata_t	FileData;
+		long				hFile;
+
+		_mkdir( "Log" );
+		
+		//-----------------------------------------------------------------
+		// *.spk file을 찾는다.
+		//-----------------------------------------------------------------
+		if ( (hFile = _findfirst( "Log\\Log*.txt", &FileData )) != -1L )
+		{
+			do
+			{
+				sprintf(filename, "Log\\%s", FileData.name);
+				
+				std::ifstream file( filename, std::ios::binary );
+				file.seekg( 0, std::ios::end );
+				
+				long fp = file.tellg();
+				
+				if (fp < 39)
+				{
+					_chmod( filename, _S_IREAD | _S_IWRITE );
+					remove(filename);	
+				}
+				else
+				{
+					file.seekg( -41, std::ios::end );
+					file.read((char*)buffer, 24);
+					buffer[24] = '\0';
+					file.close();
+					
+					if (strcmp(buffer, "Delete DebugMessageArray")==0)
+					{
+						_chmod( filename, _S_IREAD | _S_IWRITE );
+						remove(filename);
+					}
+					else
+					{
+						//copy
+//						if (computerName[0]=='\0')
+//						{
+//							unsigned long numSize = 255;
+//							GetComputerName( computerName,  &numSize );
+//						}
+//						
+//						sprintf(buffer, "\\\\쑥갓\\Log\\%s-%s", computerName, FileData.name);
+//						
+//						_chmod( filename, _S_IREAD | _S_IWRITE );
+//						rename(filename, buffer);						
+					}
+				}
+			}
+			
+			
+			while (_findnext( hFile, &FileData ) == 0);
+			
+			_findclose( hFile );			
+		}
+	}
+	
+	//-----------------------------------------------------------------------------
+	// Check Flush LogFile
+	//-----------------------------------------------------------------------------
+	void
+	CheckFlushLogFile()
+	{
+		//#ifdef OUTPUT_DEBUG_UPDATE_LOOP
+		const DWORD flushDelay = 3*60*1000;
+		static DWORD flushTime = g_CurrentTime + flushDelay;
+
+			if (g_CurrentTime > flushTime)
+			{
+				if (g_pDebugMessage!=NULL)
+				{
+					char logFile[128];
+					strcpy(logFile, g_pDebugMessage->GetFilename());
+				
+					if (g_pDebugMessage!=NULL)
+					{
+						DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+						delete g_pDebugMessage;	
+						g_pDebugMessage = NULL;
+					}
+					_chmod( logFile, _S_IREAD | _S_IWRITE );
+					remove( logFile );
+
+					sprintf(logFile, "%s\\Log\\Log%d.txt", g_CWD, timeGetTime());
+					g_pDebugMessage = new CMessageArray;
+					g_pDebugMessage->Init(MAX_DEBUGMESSAGE, 256, logFile);
+
+					DEBUG_ADD_FORMAT("[Time = %d]", g_CurrentTime);
+				}
+
+				// 3분 후
+				flushTime = g_CurrentTime + flushDelay;
+			}
+		//#endif
+	}
+#endif
+
+// HHOOK g_hHook = NULL;
+
+//LRESULT CALLBACK KeyboardHook(int nCode, WPARAM wParam, LPARAM lParam)
+//{
+//    BOOL bSysKeyDown = FALSE;
+//    BOOL bWinKeyDown = FALSE;
+//    
+//    if(nCode == HC_ACTION)
+//    {
+//        KBDLLHOOKSTRUCT* kbhook = (KBDLLHOOKSTRUCT*)lParam;
+//
+//// 알트키가 눌린것인지....
+//        if(kbhook->flags & LLKHF_ALTDOWN)
+//        {
+//            switch(kbhook->vkCode)
+//            {
+//            case VK_TAB:
+//            case VK_F4:
+//			case VK_ESCAPE:
+//                bSysKeyDown = TRUE;
+//                break;
+//            }
+//        }
+//// Control + ESC도 막쟈
+//		else if(((GetAsyncKeyState( VK_CONTROL ) & 0x8000) || g_pDXInput != NULL && (g_pDXInput->KeyDown(DIK_LCONTROL) || g_pDXInput->KeyDown(DIK_RCONTROL))) && kbhook->vkCode == VK_ESCAPE)
+//		{
+//			SHORT control = GetAsyncKeyState( VK_CONTROL );
+//			bSysKeyDown = TRUE;
+//		}
+//        else
+//        {
+//            switch(kbhook->vkCode)
+//            {
+//            case VK_LWIN:
+//            case VK_RWIN:
+//                bWinKeyDown = TRUE;
+//                break;
+//            }
+//        }
+//        
+//        if(bSysKeyDown || bWinKeyDown)
+//            return 1;
+//    }
+//
+//    return CallNextHookEx(g_hHook, nCode, wParam, lParam);
+//}
+
+//----------------------------------------------------------
+// 해상도 정보를 로드/세이브한다.
+//----------------------------------------------------------
+void InitResolutionConfig()
+{
+	int		nResolutionX, nResolutionY, nFullScreen;
+	try
+	{
+		Properties ResolutionConfig;
+		std::string str = g_pFileDef->getProperty("FILE_INFO_RESOLUTION");
+		ResolutionConfig.load(str.c_str());
+
+		nResolutionX	= ResolutionConfig.getPropertyInt("ResolutionX");
+		nResolutionY	= ResolutionConfig.getPropertyInt("ResolutionY");
+		nFullScreen		= ResolutionConfig.getPropertyInt("FullScreen");
+	}
+	catch (...)	// 파일이 없는 경우
+	{
+		nResolutionX = 1024;
+		nResolutionY = 768;
+		nFullScreen	 = 1;
+	}
+
+	// VS_UI와 Client 전역에서 사용될 정보를 세팅
+	//g_pUserInformation->IsResolution1024	= ( nResolutionX == 1024 );
+	g_pUserInformation->iResolution_x		= nResolutionX;
+	g_pUserInformation->iResolution_y		= nResolutionY;
+	
+	if (nFullScreen == 1){
+		g_bFullScreen	= true;
+	} else {
+		g_bFullScreen	= false;
+	}
+}
+
+void SaveResolutionConfig()
+{
+	if(g_pUserOption)
+	{
+		std::string str = g_pFileDef->getProperty("FILE_INFO_RESOLUTION");
+		std::ofstream file(str.c_str());
+		if(file.is_open())
+		{
+			file << "ResolutionX: " << g_pUserInformation->iResolution_x << std::endl;
+			file << "ResolutionY: " << g_pUserInformation->iResolution_y << std::endl;
+			file << "FullScreen: " << (g_bFullScreen ? "1" : "0") << '\n';
+		}
+	}
+}
+
+
+int GameStart(HINSTANCE hInstance,
+			  HINSTANCE hPrevInstance,
+			  LPSTR lpCmdLine,
+			  int nCmdShow)
+{
+#if __CONTENTS(__XTRAP)
+	//2009 04 21 하기 주석은 중국쪽 번호 현재 서비스중 아님..
+	//http://patch.wiselogic.co.kr/DarkEden
+	//660970B478E9CD6790316D9844CFE862EEE63E3F2BAD301E5F3D81C30324E0EBAAE8D9458994D60E58688AACDA8FE61389ECBD25D6B246C09E4B18F747C51F420F7D04245246E403AE73194E9554761FEBE0CB630673E9ADAFB81AF9B7ECAC
+	XTrap_C_Start("660970B47809CDE555336D9844CFE86287416167DEC365483208B760E262AA7D84A0660BAA6116039CE2CBB0C332B21FC86DAE63C50560522AD880E5933D746E0F7D04245246E417A4610E5695477E1EF47455B309945CB0D27B7C7D3821396080E71928F0",NULL);
+#endif //__XTRAP
+
+
+
+//	std::string tttt = "NEWSTART ";
+//	tttt += lpCmdLine;
+//	lpCmdLine = (char *)tttt.c_str();
+
+	/*
+	CIndexSpritePack ISPK;
+	std::ifstream ispkFile("f:\\vcpp\\clientinfo\\Data\\AppendPatch\\New18Creature.ispk", ios::binary);
+	ISPK.LoadFromFile(ispkFile);
+	ispkFile.close();
+
+	std::ofstream ispkFile2("f:\\vcpp\\clientinfo\\Data\\AppendPatch\\New18Creature.ispk", ios::binary);
+	std::ofstream ispkFile3("f:\\vcpp\\clientinfo\\Data\\AppendPatch\\New18Creature.ispki", ios::binary);
+	ISPK.SaveToFile(ispkFile2, ispkFile3);
+	ispkFile2.close();
+	ispkFile3.close();
+	*/
+
+
+	//opfstream testTemp("Data/Test/File.txt", std::ios_base::binary);
+	//testTemp.write("9", 1);
+	//testTemp.close();
+	
+	//CCompressedTempFileIO::flush_temp_file();
+#ifdef __DESIGNED_KOREA
+	g_IsWow64 = IsWow64();//by viva
+	//g_IsWow64 = TRUE;
+#endif
+
+	#ifdef OUTPUT_DEBUG
+		InitializeCriticalSection(&g_Lock);
+	#endif
+
+	//----------------------------------------------------------
+	// 패키지 정보를 로드
+	//----------------------------------------------------------
+	//이거 주석 처리하면 팩 파일 전부꺼짐
+	iovfs_base::start_vfs("data/dklegend", O_RDONLY); 
+
+	//----------------------------------------------------------
+	// 파일 경로 정보 로드
+	//----------------------------------------------------------
+	g_pFileDef = new Properties;
+	g_pFileDef->load(FILE_INFO_FILEDEF);
+
+
+	//----------------------------------------------------------
+	// 유저 정보 초기화
+	//----------------------------------------------------------
+	if (g_pUserInformation==NULL)
+		g_pUserInformation = new UserInformation;	
+
+
+	//----------------------------------------------------------
+	// 버전 정보 로드
+	//----------------------------------------------------------
+	int version = 0;
+	ivfstream versionFile;
+	if(FileOpenBinary(g_pFileDef->getProperty("FILE_INFO_VERSION").c_str(), versionFile))
+	{	
+		versionFile.read((char*)&version, 4);
+		versionFile.close();
+	}
+
+	g_pUserInformation->GameVersion = version;
+
+
+#ifdef __USE_CRASH_REPORT
+	//----------------------------------------------------------
+	// Crash Report
+	//----------------------------------------------------------
+#ifdef	__BUGTRAP
+	if(CrashReport::LoadOptionFile(g_pFileDef->getProperty("FILE_INFO_CRASH_REPORT").c_str()))
+	{
+		CrashReport::SetAppVersion(g_pUserInformation->GameVersion);
+		CrashReport::Install();
+	}
+#endif //__BUGTRAP
+#endif
+	
+	//----------------------------------------------------------
+	// 해상도 정보를 로드
+	//----------------------------------------------------------
+	InitResolutionConfig();
+
+// by viva	hMutex
+	//----------------------------------------------------------
+	// 하나의 application만 실행시킨다.
+	//----------------------------------------------------------
+	// 값 대충 넣기.. --;
+/*//by viva
+	SECURITY_ATTRIBUTES sa;
+	sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = FALSE;
+
+
+#ifndef OUTPUT_DEBUG
+	HANDLE hMutex = CreateMutex(&sa, FALSE, "<<<dklegend>>>");   
+	
+
+	if (GetLastError()==ERROR_ALREADY_EXISTS)
+	{
+		#ifdef OUTPUT_DEBUG
+			if (g_pDebugMessage!=NULL)
+			{
+				DEBUG_ADD("DKLegend is Already Running..."); 
+				DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+				delete g_pDebugMessage;	
+				g_pDebugMessage = NULL;
+			}
+		#endif
+
+		ReleaseMutex( hMutex );
+
+		#ifdef OUTPUT_DEBUG
+			DeleteCriticalSection(&g_Lock);
+		#endif
+
+		#ifndef _DEBUG
+			return -1;
+		#endif
+	}
+	
+	
+	if( FindWindow( "DKLegend", "DKLegend" ) != NULL )
+	{
+		return -1;
+	}
+#endif
+	*/
+// 현재 directory를 저장해둔다.
+//	strcpy(g_CWD, __argv[0]);
+ 	GetModuleFileName(NULL, g_CWD, _MAX_PATH);
+	char *tempCut = strrchr(g_CWD, '\\');
+	if(tempCut == NULL)
+		return FALSE;
+
+	*tempCut = '\0';
+
+//	GetCurrentDirectory( _MAX_PATH, g_CWD );
+	
+	SetCurrentDirectory(g_CWD);
+	
+// 	//	// 새로운 updater실행화일이 존재하면..
+//	if (_access(UPDATER_NEW_FILENAME, 0) == 0/* && _access(UPDATER_FILENAME, 0)*/)//updaterNewFile)
+//	{	
+//		// 예전 Patcher를 지우고..
+//		if (remove( UPDATER_FILENAME )==0)
+//		{
+//			// 새것을 예전걸로 rename
+//			if (rename( UPDATER_NEW_FILENAME, UPDATER_FILENAME )==0)
+//			{
+//				DEBUG_ADD("Update Updater.exe OK"); 
+//			}
+//		}
+////		// 예전 updater를 지우고..
+////		//remove( UPDATER_FILENAME );
+////		// 새것을 예전걸로 rename
+////		if (rename( UPDATER_NEW_FILENAME, UPDATER_FILENAME )==0)
+////		{
+////			DEBUG_ADD("Update Updater.exe OK"); 
+////		}
+//	}	
+
+	
+
+	#ifdef __METROTECH_TEST__
+		CheckLogFile();
+	#endif
+	
+
+	/*
+#include "packet\ServerSocket.h"
+
+	// 한 Client는 동시에 다른 한 Client와 통신한다.
+	// 여러군데의 resource(길드마크, profile...)가 필요한 경우 
+	//		ResourceQueue에 저장했다가 틈틈히 받도록 한다.
+	// while(1)부분은 다른 thread로 빼야된다.
+	// RequestManager 접근할때는 mutex쓰든지 해야된다.
+	// RequestManager의 Update()는 main thread에서 한다.
+	//
+	ServerSocket* pServerSocket = new ServerSocket( 9650 );
+
+	char strClient[256];
+	uint port;
+
+	while (1)
+	{
+		Socket* pSocket = pServerSocket->accept();
+
+		// request에 등록
+		RequestServerPlayer* pRequestServerPlayer = new RequestServerPlayer( pSocket );
+		g_pRequestManager->AddPlayer( pRequestServerPlayer );
+
+		// g_pRequestManager는 등록된 RequestServerPlayer에 대해서 processInput/Command/Output 처리
+
+		strcpy(strClient, pSocket->getHost().c_str());
+		port = pSocket->getPort();
+	}
+	*/
+
+	/*
+	std::ifstream file("ImageObject.spk", ios::binary);
+	std::ofstream file2("ImageObject-2.spk", ios::binary);
+	std::ofstream file2index("ImageObject-2.spki", ios::binary);
+	CSpritePack SPK;
+	SPK.LoadFromFile(file);
+	SPK.SaveToFile(file2, file2index);
+	file.close();
+	file2.close();
+	file2index.close();
+
+	return 0;
+	*/
+
+	/*
+	OSVERSIONINFO        osVer;
+    
+    // First get the windows platform
+    osVer.dwOSVersionInfoSize = sizeof(osVer);
+
+    if( !GetVersionEx( &osVer ) )
+    {
+        return 0;
+    }
+
+    if (osVer.dwPlatformId == VER_PLATFORM_WIN32_NT )
+    {
+		g_WindowsNT = TRUE;
+	}
+	else 
+	{
+		g_WindowsNT = FALSE;
+	}
+	*/
+	
+	//OutputMemorySize();
+
+//	return 0;
+
+	/*
+	std::ifstream file("f:\\vcpp\\clientexpo\\data\\image\\creatureshadow.cfpk", ios::binary);
+	CCreatureFramePack CFPK;
+	CFPK.LoadFromFile(file);
+	file.close();
+
+	CCreatureFramePack CFPK2;
+	CFPK2.Init( CFPK.GetSize()-3 );
+
+	for (int i=0; i<CFPK2.GetSize(); i++)
+	{
+		CFPK2[i] = CFPK[i];
+	}
+
+	std::ofstream file2("f:\\CreatureShadow.cfpk", ios::binary);
+	std::ofstream fileindex2("f:\\CreatureShadow.cfpki", ios::binary);
+	CFPK2.SaveToFile(file2, fileindex2);
+	file2.close();
+	fileindex2.close();
+	*/
+	
+	//-----------------------------------------------------------------------
+	// Client 시작..
+	//-----------------------------------------------------------------------
+	g_bNeedUpdate = FALSE;
+//	OutPutClassSize();
+//	return 0;
+
+	#ifdef OUTPUT_DEBUG
+	
+	OutPutClassSize();
+		if (g_pDebugMessage!=NULL)
+		{
+			delete g_pDebugMessage;		
+		}
+		g_pDebugMessage = new CMessageArray;
+
+		//---------------------------------------------------
+		// Debug Log File Init...
+		//---------------------------------------------------
+		if (g_pDebugMessage!=NULL)
+		{
+			char logFile[128];
+			sprintf(logFile, "%s\\Log\\Log%d.txt", g_CWD, timeGetTime());			
+
+//			#include <fcntl.h>
+//			char clogFile[128];
+//			sprintf(clogFile, "%s\\Data\\UI\\txt\\Logc%d.txt", g_CWD, timeGetTime());			
+//			CLogFile = _open(clogFile, _O_WRONLY | _O_TEXT | _O_CREAT | _O_TRUNC);
+
+
+			g_pDebugMessage->Init(MAX_DEBUGMESSAGE, 256, logFile);
+
+			DEBUG_ADD_FORMAT("[ Compile Time : %s ]", __TIMESTAMP__);
+		}
+	#endif
+
+
+	
+	//return 0;
+
+	//g_MemLogFile = _open("memlog.txt", _O_WRONLY | _O_TEXT | _O_CREAT | _O_TRUNC);
+
+	#ifdef _DEBUG
+		int tmpDbgFlag;
+		tmpDbgFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+		tmpDbgFlag |= _CRTDBG_DELAY_FREE_MEM_DF;
+		tmpDbgFlag |= _CRTDBG_LEAK_CHECK_DF;
+		//_CrtSetDbgFlag(tmpDbgFlag);
+		_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF | tmpDbgFlag);
+		
+
+		_CrtSetReportMode ( _CRT_WARN, _CRTDBG_MODE_DEBUG );
+		_CrtSetReportMode ( _CRT_ERROR,	_CRTDBG_MODE_DEBUG );
+		_CrtSetReportMode ( _CRT_ASSERT,_CRTDBG_MODE_DEBUG );
+	#endif	
+	
+
+	g_hInstance = hInstance;
+	// random
+	srand(time(NULL));
+
+	
+	
+
+	//---------------------------------------------------
+	// SpritePack Loading Test
+	//---------------------------------------------------
+	/*
+	CSpritePack tileSPK;
+	std::ifstream	fileSPK;//(FILE_ISPRITE_ADDON, ios::binary);
+	if (!FileOpenBinary(FILE_SPRITE_TILE, fileSPK))
+		return false;
+	tileSPK.LoadFromFile(fileSPK);
+	fileSPK.close();
+	*/
+
+	
+	// 넷마블용
+	bool bNetmarble = false;
+	bool bNetmarbleLogin  = false ; 
+	Properties NetmarbleConfig;
+	try
+	{
+		NetmarbleConfig.load(g_pFileDef->getProperty("FILE_INFO_NETMARBLE").c_str());			
+		bNetmarble = NetmarbleConfig.getPropertyInt("Netmarble") != 0;
+	}
+	catch (...)	// 파일이 없거나 뭔가 이상이 있다.
+	{
+		bNetmarble = false;
+	}
+	try
+	{
+		// 넷마블 로그인 정보 세팅
+		bNetmarbleLogin  = NetmarbleConfig.getPropertyInt("NetmarbleLogin") != 0;
+	}
+	catch (...)	// 파일이 없거나 NetmarbleLogin이 정의되지 않았을 경우
+	{
+		bNetmarbleLogin = bNetmarble;	// 디폴트로 세팅 
+	}
+	
+#ifdef 	__DESIGNED_JAPAN
+	//일본 넷마블을 위한 정보.
+	bool bNetmarbleJapan = false; 
+	try
+	{
+		// 넷마블 로그인 정보 세팅
+		bNetmarbleJapan  = NetmarbleConfig.getPropertyInt("NetmarbleJapan") != 0;
+	}
+	catch (...)	// 파일이 없거나 NetmarbleLogin이 정의되지 않았을 경우
+	{
+		bNetmarbleJapan = false;	// 디폴트로 세팅 
+	}
+#endif
+	
+	if(bNetmarble)
+	{
+		// -------------------------------------------------
+		// read registry...
+		// -------------------------------------------------
+		HKEY newKey = 0;
+		LONG ret = RegOpenKeyEx( HKEY_LOCAL_MACHINE, "SOFTWARE\\Netmarble\\NetmarbleDarkEden", NULL, KEY_ALL_ACCESS, &newKey);
+		DWORD dwSize = MAX_PATH;
+		char filepath[MAX_PATH];
+		
+		if( ret == ERROR_SUCCESS)
+		{
+			RegQueryValueEx( newKey, "RunFileName", NULL, NULL, (unsigned char*)filepath, &dwSize);
+
+			char *pFilename = strstr(filepath, "fk.exe");
+			if(pFilename != NULL)
+			{
+				strcpy(pFilename, "Updater.exe");
+				RegSetValueEx( newKey, "RunFileName", NULL, REG_SZ, 
+					(unsigned char*)&filepath, strlen(filepath));
+			}
+		}
+		RegCloseKey( newKey);
+	}
+//	if( bNetmarble == false )
+//		return -1;
+
+
+	
+
+	//MessageBox(g_hWnd, lpCmdLine, NULL, MB_OK);
+		
+	//------------------------------------------------------
+	// Server IP가 설정되어 있지 않은 경우 --> Launcher실행
+	//------------------------------------------------------
+	
+	if (strlen(lpCmdLine)==0)
+	{
+		#if defined(USE_UPDATER)
+// by viva	hMutex	
+/* 
+#ifndef OUTPUT_DEBUG
+ 			if (!ReleaseMutex( hMutex ))
+ 			{
+ 				DEBUG_ADD_FORMAT("Failed to release mutex : %d", GetLastError()); 
+ 			}
+#end
+			*/
+			#ifdef OUTPUT_DEBUG
+				if (g_pDebugMessage!=NULL)
+				{
+					DEBUG_ADD("No CommandLine --> Execute Updater.exe"); 
+					DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+					delete g_pDebugMessage;	
+					g_pDebugMessage = NULL;
+				}
+			#endif
+
+
+				_chdir( g_CWD );
+				_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);			
+			ReleaseAllObjects();			
+			
+
+			#ifdef OUTPUT_DEBUG
+				DeleteCriticalSection(&g_Lock);
+			#endif
+
+			//by viva
+			//_spawnl(_P_NOWAIT, "Updater.exe", "Updater.exe", NULL);
+		//	_chdir( g_CWD );
+		//	_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);
+//			ShellExecute(g_hWnd, NULL, UPDATER_FILENAME, lpCmdLine, NULL, SW_SHOW);
+			return FALSE;
+
+		#else
+
+			//strcpy(g_ServerIP, SERVER_IP);
+			g_MaxNPC		= 0;//MAX_NPC;
+			
+			g_bHAL			= true;
+			g_bMusicSW		= true;		
+			
+		#endif
+	}
+	//------------------------------------------------------
+	// Server IP가 설정되어 있는 경우
+	//------------------------------------------------------
+	else
+	{
+		char* str = lpCmdLine;
+
+		if (strlen(str) < 5)
+		{
+			#ifdef OUTPUT_DEBUG
+				if (g_pDebugMessage!=NULL)
+				{
+					DEBUG_ADD("Too short Commandline --> Run Updater.exe"); 
+					DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+					delete g_pDebugMessage;	
+					g_pDebugMessage = NULL;
+				}
+			#endif 
+// by viva hMutex
+/*
+#ifndef OUTPUT_DEBUG
+			ReleaseMutex( hMutex );
+#endif
+			*/
+				_chdir( g_CWD );
+				_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);
+			ReleaseAllObjects();
+
+			
+			#ifdef OUTPUT_DEBUG
+				DeleteCriticalSection(&g_Lock);
+			#endif
+
+			//_spawnl(_P_NOWAIT, "Updater.exe", "Updater.exe", NULL);	
+		//	_chdir( g_CWD );
+		//	_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);
+//			ShellExecute(g_hWnd, NULL, UPDATER_FILENAME, lpCmdLine, NULL, SW_SHOW);
+			//by viva
+			return FALSE;
+		}
+
+		bool bCheck = true;
+		bool bRunUpdater = false;
+		char checkStr[9] = "NEWSTART";
+		//char checkStr[9] = "START";
+
+		int i = 0;
+#ifdef OUTPUT_DEBUG
+		bRunUpdater = false;
+#else
+		for (i=0; i<strlen(checkStr); i++)
+		{
+			if (checkStr[i]!=str[i])
+			{
+				bRunUpdater = true;
+
+				break;
+			}
+		}
+		if(bRunUpdater == false && !bNetmarble && lpCmdLine[8] >= '0' && lpCmdLine[8] <= '9')
+		{
+			int i = 0;
+			for( i = 9; ; i++ )
+			{
+				//g_Dimension = lpCmdLine[8]-'0';
+				if ( lpCmdLine[i] == NULL )
+					break;
+				
+				if ( lpCmdLine[i] >= '0' && lpCmdLine[i] <= '9' )
+				{
+					continue;
+				}
+				else
+					break;
+			}
+			char szDimen[10];
+			memset( szDimen, 0, 10 );
+			memcpy( szDimen, lpCmdLine+8, i-8 );
+			g_Dimension = atoi( szDimen );
+			
+		//	g_Dimension = lpCmdLine[8]-'0';
+		}
+#endif
+
+		#ifdef OUTPUT_DEBUG
+			// 창모드 시작..
+			g_bTestMode = true;
+			char checkTestMode[] = "TestMode";
+			for (i=0; i<strlen(checkTestMode); i++)
+			{
+				if (checkTestMode[i]!=str[i])
+				{
+					g_bTestMode = false;
+
+					break;
+				}
+			}
+
+			if (g_bTestMode)
+			{
+				bRunUpdater = false;
+			}
+		#endif
+		
+		if (bRunUpdater)
+		{
+			#ifdef OUTPUT_DEBUG
+				if (g_pDebugMessage!=NULL)
+				{
+					DEBUG_ADD("Wrong Commandline --> Run Updater.exe"); 
+					DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+					delete g_pDebugMessage;	
+					g_pDebugMessage = NULL;
+				}
+			#endif			
+// by viva hMutex
+/*
+#ifndef OUTPUT_DEBUG
+			ReleaseMutex( hMutex );
+#endif
+*/			_chdir( g_CWD );
+			_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);
+			ReleaseAllObjects();
+
+			//bCheck = false;
+			
+			#ifdef OUTPUT_DEBUG
+				DeleteCriticalSection(&g_Lock);
+			#endif
+
+			//_spawnl(_P_NOWAIT, "Updater.exe", "Updater.exe", NULL);	
+		//	_chdir( g_CWD );
+
+			// 여기
+			// [Futec수정]
+//			char szTemp[512];
+//			sprintf(szTemp, "%s %s", UPDATER_FILENAME, lpCmdLine);
+//			DWORD error = WinExec(szTemp, SW_SHOW);
+//			switch(error)
+//			{
+//			case 0:
+//				MessageBox(NULL, "The system is out of memory or resources. ", PROGRAM_TITLE, MB_OK);
+//				break;
+//
+//			case ERROR_BAD_FORMAT:
+//				MessageBox(NULL, "The .exe file is invalid (non-Win32 .exe or error in .exe image). ", PROGRAM_TITLE, MB_OK);
+//				break;
+//
+//			case ERROR_FILE_NOT_FOUND:
+//				MessageBox(NULL, "The specified file was not found. ", PROGRAM_TITLE, MB_OK);
+//				break;
+//
+//			case ERROR_PATH_NOT_FOUND:
+//				MessageBox(NULL, "The specified path was not found. ", PROGRAM_TITLE, MB_OK);
+//				break;
+//			}
+
+		//	_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, lpCmdLine, NULL);
+//			ShellExecute(g_hWnd, NULL, UPDATER_FILENAME, lpCmdLine, NULL, SW_SHOW);
+			//by viva
+			return FALSE;
+		}
+
+
+		//strcpy(g_ServerIP, SERVER_IP);
+		g_MaxNPC		= 0;//MAX_NPC;
+
+		g_bHAL			= true;
+		g_bMusicSW		= true;
+	}
+
+	// [Futec수정]
+	GetFutecAddress(lpCmdLine);
+
+	
+	//------------------------------------------------------------------------
+	// 정상적인 Patch 
+	// 갑자기 압축을 하게 되는 바람에... - -;
+	//------------------------------------------------------------------------
+//	bool bPatched = ApplyPatch();
+
+	//------------------------------------------------------------------------
+	// ScreenEffect 생성
+	//------------------------------------------------------------------------
+//	ConvertScreenEffect();
+
+	//------------------------------------------------------------------------
+	// 이제부터 EffectScreen에 Append되는 SPK는 
+	// 이 시점에서 Append해야 한다.
+	// CheckTerriblePatch에 같이 넣어도 된다. - -;;
+	//------------------------------------------------------------------------
+	//AppendScreenEffect();
+	
+	
+	if (!CheckTerriblePatch())
+	{
+		ReleaseAllObjects();
+
+		#ifdef OUTPUT_DEBUG
+			if (g_pDebugMessage!=NULL)
+			{
+				delete g_pDebugMessage;	
+				g_pDebugMessage = NULL;
+			}
+		#endif
+	// by viva hMutex
+/*
+#ifndef OUTPUT_DEBUG
+		ReleaseMutex( hMutex );
+#endif
+*/
+
+		#ifdef OUTPUT_DEBUG
+			DeleteCriticalSection(&g_Lock);
+		#endif
+
+		return 0;
+	}
+
+
+	//----------------------------------------------------------------
+	// Updater.exe를 update 시킨다.
+	//----------------------------------------------------------------
+//	std::ifstream updaterNewFile(UPDATER_NEW_FILENAME, ios::binary | ios::nocreate);
+
+	// 새로운 updater실행화일이 존재하면..
+	if (!_access(UPDATER_NEW_FILENAME, 0))//updaterNewFile)
+	{	
+//		updaterNewFile.close();
+
+		// 예전 updater를 지우고..
+		if (remove( UPDATER_FILENAME )==0)
+		{
+			// 새것을 예전걸로 rename
+			if (rename( UPDATER_NEW_FILENAME, UPDATER_FILENAME )==0)
+			{
+				DEBUG_ADD("Update Updater.exe OK"); 
+			}
+		}
+	}	
+
+	//strcpy(g_ServerIP, SERVER_IP);
+	//---------------------------------------------------
+	// Update 디렉토리를 지워준다.
+	//---------------------------------------------------
+	// updater에서 지워야 하는데..빼먹는 바람에.. T_T;;
+	//---------------------------------------------------
+	char CWD[_MAX_PATH];
+
+	// 현재 path읽기
+	if (_getcwd( CWD, _MAX_PATH )!=NULL)
+	{	
+		char UpdateDir[_MAX_PATH];
+
+		int lenCWD = strlen(CWD);
+		if (lenCWD > 1)
+		{
+			if (CWD[lenCWD-1]=='\\')
+			{
+				sprintf(UpdateDir, "%s%s", CWD, DIRECTORY_UPDATE);
+			}
+			else
+			{
+				sprintf(UpdateDir, "%s\\%s", CWD, DIRECTORY_UPDATE);
+			}
+		}
+		
+		if (_rmdir( UpdateDir )!=0)
+		{			
+			// PATH가 잘못된 경우
+			if (errno==ENOENT)
+			{				
+			}
+			// 뭔가 있어서 안 지워진 경우..		
+			else //if (errno==ENOTEMPTY)
+			{
+				// 현재 directory를 기억해둔다.				
+				if (_chdir( UpdateDir ) == 0)
+				{
+					//---------------------------------------------------
+					// file하나하나를 지워준다. T_T;
+					//---------------------------------------------------
+					struct _finddata_t	FileData;
+					long				hFile;
+
+					// 모든 화일을 읽어온다.
+					if( (hFile = _findfirst( "*.*", &FileData )) != -1L )					
+					{
+						while (_findnext( hFile, &FileData ) == 0)
+						{
+							// .으로 시작하는 건 지울 필요 없당..
+							if (FileData.name[0] != '.')
+							{
+								remove( FileData.name );
+							}
+						}
+
+						// 끝
+						_findclose( hFile );			
+					}
+					
+					_chdir( CWD );
+
+					if (_rmdir( UpdateDir )==0)
+					{
+						// 잘 지워졌다.
+					}
+				}				
+			}
+		}
+	}
+	
+	RemoveProgressBar();
+
+	//-----------------------------------------------------------------
+	// 패치 내용 찍어준다.
+	//-----------------------------------------------------------------
+//	if (bPatched)
+//	{
+//		ShowPatchLogWindow();
+//	}	
+
+
+	BOOL bBadTimer = FALSE;
+
+    MSG                         msg;
+
+	NETMARBLE_INFO NetmarbleInfo;
+	REALSERVER_INFO RealServerInfo;
+	if(bNetmarble && bNetmarbleLogin)
+	{
+		if(ParsingNetmarble(lpCmdLine, NetmarbleInfo) == false)
+		{
+			if(NetmarbleConfig.getPropertyInt("Netmarble") == 1)
+			{
+				MessageBox(NULL, "넷마블용 다크에덴은 넷마블 홈페이지를 통해서만 실행이 가능합니다.", PROGRAM_TITLE, MB_OK);
+				return -1;
+			}
+
+			bNetmarble = false;
+		}
+	} else
+	{
+//		 //test  mode|demention|ID|key
+//		char szBuf[1024]; 
+//		sprintf(szBuf, "%s", lpCmdLine); 
+
+		if(ParsingRealServer(lpCmdLine, g_Dimension, RealServerInfo) == false)
+		{
+//#ifndef OUTPUT_DEBUG
+//			MessageBox(NULL, "웹 페이지 에서 다시 실행해주시기 바랍니다.", PROGRAM_TITLE, MB_OK);
+//			ShellExecute(NULL, NULL, "www.darkeden.com", NULL, NULL, SW_SHOW);
+//			return -1;
+//
+//#endif
+		}
+	}
+	// User Information에 Netmarble정보 저장
+	g_pUserInformation->IsNetmarble = bNetmarble;
+	g_pUserInformation->IsNetmarbleLogin = bNetmarbleLogin;
+
+	bool bTestServer = false;
+	Properties TestServerConfig;
+	try
+	{
+
+		TestServerConfig.load(g_pFileDef->getProperty("FILE_INFO_TESTSERVER").c_str());	
+		bTestServer = TestServerConfig.getPropertyInt("TestServer") != 0;
+	}
+	catch (...) {}
+//	
+//	FILE *fp = fopen("Data\\Info\\SuperUser.inf","rt");	
+//	MessageBox(NULL,__TIME__,__TIME__,MB_OK);
+//	if(fp != NULL)
+//	{
+//		char szLine[512];
+//		fgets(szLine,512,fp);
+//		char szCompare[512];
+//		bool	superUser = true;
+//		wsprintf(szCompare,"%d%s",__LINE__,__TIME__);
+//		MessageBox(NULL,szCompare,szCompare,MB_OK);
+//		if(strcmp(szLine,szCompare))
+//			superUser = false;
+//		fgets(szLine,512,fp);
+//		fclose(fp);
+//		
+//		int Code=0;
+//		char *tempCode = new char[strlen(szCompare)];
+//		memset(tempCode, 0, strlen(szCompare) );
+//		for(int i=0;i<strlen(szCompare);i++)
+//		{
+//			if( i != 0 )
+//				tempCode[i] = szCompare[1] + szCompare[i];
+//			else
+//				tempCode[i] = szCompare[0] + szCompare[i];			
+//		}
+//		MessageBox(NULL, tempCode, tempCode, MB_OK);
+//		if(strcmp(tempCode,szLine))
+//			superUser = false;
+//		delete []tempCode;	
+//
+//		std::string myIP;
+//		
+//		WORD wVersionRequested; 
+//		WSADATA wsaData; 
+//		char name[255]; 
+//		PHOSTENT hostinfo; 
+//		wVersionRequested = MAKEWORD( 2, 0 ); 
+//		if ( WSAStartup( wVersionRequested, &wsaData ) == 0 ) 
+//		{
+//			if( gethostname ( name, sizeof(name)) == 0) 
+//			{
+//				if((hostinfo = gethostbyname(name)) != NULL) 
+//					myIP= inet_ntoa (*(struct in_addr *)*hostinfo->h_addr_list); 
+//				else
+//					superUser = false;
+//			} else superUser = false;
+//			WSACleanup( ); 
+//		} else
+//			superUser = false;
+//		if(strstr(myIP.c_str(),"220.117.154")==NULL)
+//			superUser = false;
+//
+//		MessageBox(NULL, myIP.c_str(), myIP.c_str(), MB_OK);
+//		if(superUser)
+//		{
+//			g_bSuperUser = true;			
+//		} else
+//			g_bSuperUser = false;
+//	}
+
+	DARKEDEN_LANGUAGE Language = CheckDarkEdenLanguage();
+	
+	switch( Language )
+	{
+	case DARKEDEN_CHINESE :
+		gC_ci = new CI_CHINESE;
+		break;
+	case DARKEDEN_JAPANESE :
+		{
+		gC_ci =  new CI_JAPAN;
+		break;
+		}
+	default :
+		gC_ci = new CI_KOREAN;
+		break;
+	}
+
+// BugTrap으로 교체
+// #ifndef _DEBUG
+// 	if( gC_ci->IsKorean() == true )
+// 		InitCrashReport();
+// #endif
+/*#ifdef __VVPROTECT__
+#ifndef _DEBUG //by viva
+	VM_START_WITHLEVEL(20)
+#endif
+	Defender* _pDefender = NULL;
+#ifdef __DESIGNED_KOREA
+	if(!g_IsWow64)
+	{
+#endif
+		_pDefender = new Defender();
+		if(!_pDefender->init()) return FALSE;
+#ifdef __DESIGNED_KOREA
+	}
+#endif
+#ifndef _DEBUG
+	VM_END
+#endif
+#endif */
+	 
+
+	if (InitApp(nCmdShow))
+	{
+#if __CONTENTS(__XTRAP)
+		XTrap_C_KeepAlive();
+#endif //__XTRAP
+		DDSCAPS2 ddsCaps2;
+		DWORD dwTotal;
+		DWORD dwFree;
+		ZeroMemory(&ddsCaps2, sizeof(ddsCaps2)); 
+		ddsCaps2.dwCaps = DDSCAPS_VIDEOMEMORY;//DDSCAPS_TEXTURE; 
+		HRESULT hr = CDirectDraw::GetDD()->GetAvailableVidMem(&ddsCaps2, &dwTotal, &dwFree);
+
+		DDCAPS	driverCaps;
+		ZeroMemory( &driverCaps, sizeof(driverCaps) );
+		driverCaps.dwSize = sizeof(driverCaps);
+
+		hr = CDirectDraw::GetDD()->GetCaps( &driverCaps, NULL );
+#ifndef _DEBUG
+		VM_START_WITHLEVEL(20)
+#endif
+		//by viva
+		APICheck _ApiCheck;
+		if(!_ApiCheck.init()) return FALSE;
+
+		//end
+#ifndef _DEBUG
+		VM_END
+#endif
+		g_dwVideoMemory = driverCaps.dwVidMemTotal;
+//		g_dwVideoMemory = driverCaps.dwVidMemFree; 
+		
+		// 넷마블용
+		if(bNetmarble)
+		{
+			g_pUserInformation->NetmarbleID = NetmarbleInfo.ID;  
+			g_pUserInformation->NetmarblePassword = NetmarbleInfo.Password;
+			g_pUserInformation->WorldID = NetmarbleInfo.WorldID;
+			g_pUserInformation->ServerID = NetmarbleInfo.ServerID;
+//			g_pUserInformation->GoreLevel = NetmarbleInfo.bGore;	//zzi - 넷마블 이용제한 UI 처리 
+//			g_pUserInformation->bNetmarbleGoreLevel = NetmarbleInfo.bGore;
+
+#ifdef __DESIGNED_JAPAN
+			g_pUserInformation->IsNetmarbleJapan = bNetmarbleJapan ;
+#endif
+			
+		}
+		else
+		{
+			// mode|demention|ID|key
+			g_pUserInformation->IsAutoLogIn			= RealServerInfo.bMode;
+			if(true == g_pUserInformation->IsAutoLogIn)
+			{
+				g_pUserInformation->UserID				= RealServerInfo.ID;
+				g_pUserInformation->AutoLogInKeyValue	= RealServerInfo.Key;
+			
+				g_Dimension = RealServerInfo.WorldID;
+
+#ifdef OUTPUT_DEBUG
+				char szBuf[1024];
+				sprintf(szBuf, "mode = %d, id = %d,world = %s,key = %s", g_pUserInformation->IsAutoLogIn,
+																		
+
+	g_Dimension,
+																		
+
+	g_pUserInformation->UserID.GetString(),
+																		
+
+	g_pUserInformation->AutoLogInKeyValue.GetString());
+				DEBUG_ADD(szBuf);
+#endif
+			}			
+			
+		
+		}
+/*#ifdef __VVPROTECT__
+#ifndef _DEBUG//by viva
+		VM_START_WITHLEVEL(20)
+#endif
+#ifdef __DESIGNED_KOREA
+		if(!g_IsWow64)
+#endif
+			if(!_pDefender->setProtectProcessPid())
+				return FALSE;
+
+		int checkDriverTime = g_CurrentTime;
+#ifndef _DEBUG
+		VM_END  
+#endif
+#endif*/
+		
+
+
+		if( gC_ci->IsKorean() )
+			g_pUserInformation->SetKorean();
+		else if (gC_ci->IsChinese() )
+			g_pUserInformation->SetChinese();
+		else if (gC_ci->IsJapanese() )
+			g_pUserInformation->SetJapanese();
+
+//		#if !defined(OUTPUT_DEBUG) && !defined(__DEBUG_OUTPUT__)
+//		g_hHook = SetWindowsHookEx(WH_KEYBOARD_LL,(HOOKPROC)KeyboardHook, hInstance, 0);
+//
+//		SystemParametersInfo(SPI_SETSCREENSAVERRUNNING, TRUE, NULL, NULL); 
+//		#endif
+
+		//static DWORD lastTime=1;
+		//------------------------------
+		// 초기화 되지 않았으면 초기화한다.
+		//------------------------------
+		if (!g_pTopView->IsInit())
+		{
+			g_pTopView->Init();			
+		
+		}
+
+		g_bActiveApp = TRUE;
+		//g_bActiveGame = TRUE;
+		DEBUG_CMD(MIN_CLRSCR, "시작");
+		DEBUG_CMD(MIN_SHOWWND, "------------------------------");
+		
+		int iGameRunTime	= 0;	//게임 
+		int	iGameBreakTime	= 0;	//게임 멈춤 시간
+
+		DWORD dwthread = 0;
+#if __CONTENTS(__XTRAP)
+		CreateThread(NULL,0 , XTrap_Check_Alive, NULL, 0, &dwthread);
+#endif //__XTRAP
+		
+
+
+		while (TRUE)
+		{
+			g_bActiveGame = TRUE;	// 임시로 활성화 상태로 세팅한다.
+
+			if(_ApiCheck.CheckApi()) break;
+/*#ifdef __VVPROTECT__			
+			if(g_CurrentTime - checkDriverTime > 1000)
+			{
+#ifndef _DEBUG//by viva
+	VM_START_WITHLEVEL(20)
+#endif
+#ifdef __DESIGNED_KOREA
+				if(!g_IsWow64)
+#endif
+					if(_pDefender->getCheck() != ::GetCurrentProcessId())
+						break;
+				checkDriverTime = g_CurrentTime;
+#ifndef _DEBUG
+	VM_END
+#endif
+			}
+#ifdef __DESIGNED_KOREA
+			if(!g_IsWow64)
+#endif
+				if(!_pDefender->getCheckLive())	break;
+#endif*/
+
+			if (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE))
+			{	
+				if (!GetMessage(&msg, NULL, 0, 0))
+					break;
+					//return msg.wParam;
+				//by viva 
+				if(msg.message == WM_SYSCOMMAND && msg.wParam == SC_CLOSE)
+					//gpC_base->SendMessage(UI_QUITEXIT, 0, 0);
+					continue;
+				//end
+				else
+				{
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
+					
+
+					if ( msg.message == WM_KEYDOWN )
+					{
+						switch( LOWORD(msg.wParam) )
+						{
+						case VK_RETURN:
+							if ( g_pWin32Edite )
+								g_pWin32Edite->OnReturn();
+							break;
+							
+						}
+					}
+
+					if ( msg.message == WM_LBUTTONDBLCLK || msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDBLCLK || msg.message == WM_RBUTTONDOWN )
+					{
+						POINT cursorPoint;
+						GetCursorPos(&cursorPoint);
+						ScreenToClient(g_hWnd, &cursorPoint);
+
+						if ( g_pWin32Edite )
+						{
+							if ( g_pWin32Edite->PtInRect(cursorPoint) )
+								g_pWin32Edite->SetFocus(true);
+							else
+								g_pWin32Edite->SetFocus(false);
+						}
+					}
+
+				}
+			}
+			else if ( g_bActiveApp
+#ifdef OUTPUT_DEBUG
+				|| g_bTestMode
+#endif
+				)
+			{
+				#ifdef OUTPUT_DEBUG
+				//	DEBUG_ADD("u-");
+				#endif
+				//if ( )
+				{						
+					//UpdateFrame();
+					// timer
+					g_CurrentTime	= timeGetTime();
+
+					//if (g_CurrentTime - lastTime > g_UpdateDelay)
+					{
+						// CDirectDraw가 작동중이지 않을 경우에는 return
+						//if (g_bActiveApp)// && CDirectDraw::IsActive())
+						if (g_pUpdate!=NULL)
+						{
+							// 노파심.. 으흠.. --;;
+							CWinUpdate*	pCurrentUpdate = g_pUpdate;
+
+							pCurrentUpdate->Update();
+
+							#ifdef __METROTECH_TEST__
+								CheckFlushLogFile();
+							#endif
+
+						}
+
+						//lastTime = g_CurrentTime;
+					}
+#ifdef __NPROTECT__
+#ifndef __DESIGNED_INTERNATION
+					//20080902 실시간 체크 뒤늦게라도 만들어서 다행 또한 현재 closeNPROTECT는 아무 기능도 없다.
+#if __CONTENTS(__NPROTECT)
+					if( CheckNPROTECT() != NPROTECT_OK )
+					{
+						g_nProtectSTATUS = NPROTECT_CHECK_ERROR;
+						break;
+					}
+#endif //__NPROTECT
+#endif //__DESIGNED_INTERNATION
+					if(g_nProtectSTATUS != NPROTECT_NORMAL)
+					{
+						bBadTimer =  TRUE;
+						break;
+					}
+#endif
+					
+					if( g_bForceExitBynProtect )
+					{
+						bBadTimer = TRUE;
+						break;
+					}
+
+					//#ifdef OUTPUT_DEBUG
+						DWORD timeGap = g_CurrentTime - g_StartTime;
+							
+						if (timeGap > 1000)
+						{
+							//UpdateFrame();
+					
+							g_FrameRate = (g_FrameCount - g_StartFrameCount) * 1000 / timeGap;
+
+							// 15 fps 이상
+							g_bGoodFPS = (g_FrameRate >= g_FrameGood);
+							
+							g_StartTime = g_CurrentTime;
+							g_StartFrameCount = g_FrameCount;
+						}
+					//#endif
+						
+/*
+					//--------------------------------------------------
+					// 비정상적인 timer를 체크하기 위해서..
+					//--------------------------------------------------
+					const int checkSecond = 3;
+					const int checkMillisecond = 3000;
+					const int checkHackMillisecond = 5000;
+
+					static int badTimes = -1;					
+					static DWORD lastTime = g_CurrentTime;
+					static DWORD	lastHackTime = 0;
+					//static int	lastSecond = 0;					
+
+					//--------------------------------------------------
+					// SpeedHack 체크
+					//--------------------------------------------------
+					if (g_CurrentTime - lastHackTime > checkHackMillisecond)	// 5초마다
+					{
+						static int checker = 0;
+
+						if (++checker & 0x01)
+//						{
+							// 띄워놓고 Spy++로 보면.. WndClass가 보인당.
+							if (FindWindow("#32770", "스피드핵 Ver 1.0 ")!=NULL)
+							{		
+								// 끝 -_-;
+								bBadTimer = TRUE;
+
+								DEBUG_ADD("Find Speeder3!!!!");
+
+								break;
+							}
+//						}
+						else
+//						{					
+							// 띄워놓고 Spy++로 보면.. WndClass가 보인당.
+							if (FindWindow("#32770", "Brothers Speeder")!=NULL)
+							{		
+								// 끝 -_-;
+								bBadTimer = TRUE;
+
+								DEBUG_ADD("Find Speeder!!!!");
+
+								break;
+							}
+//						}
+						else
+//						{
+							// 띄워놓고 Spy++로 보면.. WndClass가 보인당.
+							if (FindWindow("#32770", "兄弟?速器")!=NULL)
+							{		
+								// 끝 -_-;
+								bBadTimer = TRUE;
+
+								DEBUG_ADD("Find Speeder4!!!!");
+
+								break;
+							}
+//						}
+						else
+//						{
+							// 띄워놓고 Spy++로 보면.. WndClass가 보인당.
+							if (FindWindow("TApplication", "Macro Express 2000")!=NULL)
+							{		
+								// 끝 -_-;
+								bBadTimer = TRUE;
+
+								DEBUG_ADD("Find Macro Express!!!!");
+
+								break;
+							}
+//						}
+
+						lastHackTime = g_CurrentTime;
+					}
+
+					//--------------------------------------------------
+					// timer는 3초가 흘렀는데.. 시간은 3초가 안됐다면
+					//--------------------------------------------------
+					///*
+					if (g_CurrentTime - lastTime > checkMillisecond)	// 3초마다
+					{
+						SYSTEMTIME st;
+						GetLocalTime( &st ); 
+						static WORD lastSecond = st.wSecond;
+
+						int elapsedSecond;
+						if (st.wSecond >= lastSecond)
+						{
+							elapsedSecond = st.wSecond - lastSecond;
+						}
+						else
+						{
+							elapsedSecond = st.wSecond + 60 - lastSecond;
+						}
+
+						// 시간은 3초가 안됐으면..
+						if (elapsedSecond < checkSecond)
+						{
+							// 사기당..
+							if (++badTimes > 5)
+							{
+								// 끝 -_-;
+								bBadTimer = TRUE;
+
+								DEBUG_ADD("Bad Timer!!!!");
+
+								break;
+							}
+						}
+						else
+						{
+							badTimes = 0;
+						}
+						
+						lastSecond = st.wSecond;
+						lastTime = g_CurrentTime;
+					}
+					//*/
+				}
+
+				#ifdef OUTPUT_DEBUG
+				//	DEBUG_ADD("-u");
+				#endif
+			}
+			else
+			{
+				// Make sure we go to sleep if we have nothing else to do
+				WaitMessage();
+			}
+		}	
+		#ifndef __OUTPUT_DEBUG__
+		SystemParametersInfo(SPI_SETSCREENSAVERRUNNING, FALSE, NULL, NULL); 
+		#endif
+	}
+	else
+	{		
+	//	InitFail("Initialize Failed!");        
+	}
+
+	//-----------------------------------------------------------------------------
+	// 타이머 이상으로 종료하는 경우
+	//-----------------------------------------------------------------------------
+	if (bBadTimer)
+	{
+		if (g_pUIDialog!=NULL)
+		{
+#if defined(__NPROTECT_OLD_VERSION__)&&defined(__NPROTECT__)
+
+			if( g_nProtectSTATUS != NPROTECT_NORMAL && g_nProtectSTATUS != NPROTECT_MAX )
+			{
+				g_pUIDialog->PopupFreeMessageDlg( g_nProtectMessage[g_nProtectSTATUS].c_str() );
+			} else
+				g_pUIDialog->PopupFreeMessageDlg( "매크로나 바이러스가 발견되어 다크에덴이 종료됩니다. 바이러스 검사를 해보시고, 정상적으로 게임 진행을 하는데 이러한 문제가 또 발생된다면 bug@darkeden.com으로 메일을 보내주세요.", -1, -1, 0 );
+#endif
+
+#if defined(__NPROTECT__)&&!defined(__NPROTECT_OLD_VERSION__)
+			if( g_bForceExitBynProtect )
+			{
+				if( g_nProtectMessage.find( g_nProtectErrorMessage ) != g_nProtectMessage.end() )
+				{
+					char szTemp[256];
+					wsprintf(szTemp,"%s [%d]", g_nProtectMessage[g_nProtectErrorMessage].c_str(), g_nProtectErrorMessage2 );
+					g_pUIDialog->PopupFreeMessageDlg( szTemp );
+				}
+				else
+				{
+					char szTemp[256];
+					wsprintf(szTemp,"nProtect의 알 수 없는 오류 에러코드[%d][%d]입니다. 다크에덴을 종료합니다.",g_nProtectErrorMessage, g_nProtectErrorMessage2);
+					g_pUIDialog->PopupFreeMessageDlg( szTemp );
+				}
+			}
+#endif
+				
+//			if(g_bForceExitBynProtect2)
+//			{
+//				g_pUIDialog->PopupFreeMessageDlg( "nProtect 관련 파일 초기화 에러가 발생했습니다. 관리자 계정으로 로그인하여 게임을 실행하시기 바랍니다.", -1, -1, 0 );
+//			}else
+//			{
+//				if(g_bForceExitBynProtect)
+//					g_pUIDialog->PopupFreeMessageDlg( "바이러스 및 해킹 차단기에 의해 다크에덴이 종료됩니다. 바이러스 검사를 해보시고, 정상적으로 게임 진행을 하는데 이러한 문제가 또 발생된다면, bug@darkeden.com 으로 메일을 보내주세요.", -1, -1, 0 );
+//				else
+//					g_pUIDialog->PopupFreeMessageDlg( "매크로나 바이러스가 발견되어 다크에덴이 종료됩니다. 바이러스 검사를 해보시고, 정상적으로 게임 진행을 하는데 이러한 문제가 또 발생된다면 bug@darkeden.com으로 메일을 보내주세요.", -1, -1, 0 );
+//			}
+//			//MessageBox(NULL, "Timer Error!", PROGRAM_TITLE, MB_OK | MB_TOPMOST);
+			
+			while (1)
+			{
+				UpdateInput();
+				UpdateMouse();
+
+//				if (CDirect3D::IsHAL())
+//				{
+//					gC_vs_ui.Show();
+//				}
+//				else
+				{	
+					gC_vs_ui.Show();
+
+					POINT point = { 0, 0 };
+					RECT rect = { 0, 0, SURFACE_WIDTH, SURFACE_HEIGHT };
+					
+					g_pBack->BltNoColorkey( &point, g_pLast, &rect );	
+				}
+				CDirectDraw::Flip();
+
+				if (g_pDXInput->KeyDown(DIK_ESCAPE)
+					|| g_pDXInput->KeyDown(DIK_NUMPADENTER)
+					|| g_pDXInput->KeyDown(DIK_RETURN)
+					|| g_pDXInput->KeyDown(DIK_SPACE))
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	// 해상도 정보 저장
+	SaveResolutionConfig();
+
+	//-----------------------------------------------------------------------------
+	// 모든 object들 제거
+	//-----------------------------------------------------------------------------	
+	ReleaseAllObjects();
+#ifdef __WEB_BROWSER__
+	if(NULL != g_pWebBrowser)
+	{
+		g_pWebBrowser->Quit();
+		g_pWebBrowser->Release();
+		DeleteObject(g_pWebBrowser);
+		g_pWebBrowser= NULL;
+		CoUninitialize();
+	}
+#endif
+//#if defined(OUTPUT_DEBUG) && !defined(_DEBUG)
+	delete gC_ci;
+#ifdef OUTPUT_DEBUG
+//	_close(CLogFile);
+//	CheckCLogFile();
+#endif
+#ifdef __VVPROTECT__
+#ifndef _DEBUG //by viva
+	VM_START_WITHLEVEL(20)
+#endif
+#ifdef __DESIGNED_KOREA
+	if(!g_IsWow64)
+#endif
+//		if(_pDefender->openVVProtect()!=INVALID_HANDLE_VALUE)
+//			_pDefender->UnLoadDriver();
+
+#ifndef _DEBUG
+	VM_END
+#endif
+#endif
+	// 해상도 복구//by viva
+	HWND hWnd = ::FindWindow("fk", "룩욺조掉");
+	if(hWnd == NULL)
+		ChangeDisplaySettings(NULL, 0);
+
+
+	#ifdef OUTPUT_DEBUG	
+		if (g_bNeedUpdate)	
+		{
+			DEBUG_ADD("Need to Update! Run Updater.exe"); 
+		}
+
+		DEBUG_ADD("---------------[  End ReleaseAllObjects  ]---------------");
+	
+		if (g_pDebugMessage!=NULL)
+		{
+			DEBUG_ADD("--------------- Delete DebugMessageArray --------------");		
+			delete g_pDebugMessage;	
+			g_pDebugMessage = NULL;
+		}
+	#endif
+	DEBUG_CMD(MIN_HIDEWND, "------------------------------");
+
+
+	if (g_pClientConfig!=NULL)
+	{
+		delete g_pClientConfig;
+		g_pClientConfig = NULL;
+	}
+
+#ifdef __NPROTECT__
+	CloseNPROTECT();
+#endif
+
+// by viva hMutex
+/*
+#ifndef OUTPUT_DEBUG
+	ReleaseMutex( hMutex );
+#endif
+*/
+
+	#ifdef OUTPUT_DEBUG
+		DeleteCriticalSection(&g_Lock);
+	#endif
+	
+	//----------------------------------------------------------------
+	// Updater를 실행시킨다.
+	//----------------------------------------------------------------
+	if (g_bNeedUpdate)
+	{
+		//_spawnl(_P_NOWAIT, UPDATER_FILENAME, UPDATER_FILENAME, "UPDATE", NULL);
+		char szTemp[2048];
+		sprintf(szTemp, "UPDATE %s", lpCmdLine);
+		_chdir( g_CWD );
+		_spawnl(_P_OVERLAY, UPDATER_FILENAME, UPDATER_FILENAME, szTemp, NULL);		
+//		ShellExecute(g_hWnd, NULL, UPDATER_FILENAME, szTemp, NULL, SW_SHOW);
+	}
+
+	return 0;
+}
+
+int GenerateMiniDump(HANDLE hFile, PEXCEPTION_POINTERS pExceptionPointers)
+{
+	BOOL bOwnDumpFile    = FALSE;
+	HANDLE hDumpFile    = hFile;    
+	MINIDUMP_EXCEPTION_INFORMATION ExpParam;
+
+	typedef BOOL (WINAPI * MiniDumpWriteDumpT)( 
+		HANDLE,
+		DWORD ,
+		HANDLE ,
+		MINIDUMP_TYPE ,
+		PMINIDUMP_EXCEPTION_INFORMATION ,
+		PMINIDUMP_USER_STREAM_INFORMATION ,
+		PMINIDUMP_CALLBACK_INFORMATION
+		);
+
+	MiniDumpWriteDumpT pfnMiniDumpWriteDump = NULL;
+	HMODULE hDbgHelp = LoadLibrary(_T("DbgHelp.dll"));
+	if (hDbgHelp)
+		pfnMiniDumpWriteDump = (MiniDumpWriteDumpT)GetProcAddress(hDbgHelp, "MiniDumpWriteDump");
+
+	if (pfnMiniDumpWriteDump)
+	{
+		if (hDumpFile==NULL || hDumpFile==INVALID_HANDLE_VALUE)
+		{
+			TCHAR szPath[MAX_PATH]        = {0}; 
+			TCHAR szFileName[MAX_PATH]    = {0}; 
+			TCHAR* szAppName            = "Dump"; 
+			TCHAR* szVersion            = "v2.0"; 
+			TCHAR dwBufferSize            = MAX_PATH; 
+			SYSTEMTIME stLocalTime; 
+
+			GetLocalTime( &stLocalTime ); 
+			GetTempPath( dwBufferSize, szPath );
+
+			StringCchPrintf( szFileName, MAX_PATH, "%s%s", szPath, szAppName ); 
+			CreateDirectory( szFileName, NULL );
+
+			StringCchPrintf( szFileName, MAX_PATH, "%s%s//%s-%04d%02d%02d-%02d.dmp", 
+				szPath, szAppName, szVersion, 
+				stLocalTime.wYear, stLocalTime.wMonth, stLocalTime.wDay, 
+				stLocalTime.wHour); 
+			hDumpFile = CreateFile(szFileName, GENERIC_READ|GENERIC_WRITE, 
+				FILE_SHARE_WRITE|FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+
+			bOwnDumpFile = TRUE;
+		}
+
+		if (hDumpFile!=INVALID_HANDLE_VALUE)
+		{
+			ExpParam.ThreadId = GetCurrentThreadId(); 
+			ExpParam.ExceptionPointers = pExceptionPointers; 
+			ExpParam.ClientPointers = FALSE;
+
+			pfnMiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), 
+				hDumpFile, MiniDumpWithDataSegs, (pExceptionPointers ? &ExpParam : NULL), NULL, NULL);
+
+			if (bOwnDumpFile)
+				CloseHandle(hDumpFile);
+		}
+	}        
+
+	if (hDbgHelp!=NULL)
+		FreeLibrary(hDbgHelp);
+
+	//DestroyWindow(g_hWnd);
+	ExitProcess(0);
+
+	return EXCEPTION_EXECUTE_HANDLER; 
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// Name: WinMain()
+// Desc: Initialization, message loop
+//-----------------------------------------------------------------------------
+int PASCAL
+WinMain(HINSTANCE hInstance,
+        HINSTANCE hPrevInstance,
+        LPSTR lpCmdLine,
+        int nCmdShow)
+{
+
+	HANDLE hFile = 0;
+
+	__try 
+	{
+		int a = GameStart(hInstance, hPrevInstance, lpCmdLine, nCmdShow);
+	} 
+	__except(GenerateMiniDump(hFile, GetExceptionInformation()),EXCEPTION_CONTINUE_EXECUTION) 
+	{
+
+		
+
+	}
+	
+}
+
+//int SURFACE_WIDTH(){return 1024;}
+//int SURFACE_HEIGHT(){return 768;}

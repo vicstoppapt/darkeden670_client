@@ -1,0 +1,98 @@
+//zzi
+#include "UpdaterVersionControl.h"
+//#define __ENGLISH__//by viva
+//#define __CHINESE__//by viva
+//-----------------------------------------------------------------------------
+// Updater.h
+//-----------------------------------------------------------------------------
+#ifndef	__UPDATER_H__
+#define	__UPDATER_H__
+
+
+// 프로그램..
+#define		PROGRAM_TITLE				"Updater"
+#define		PROGRAM_NAME				"Updater"
+#define		DARKEDEN_FILENAME			"T1DK.exe"
+#define		PATCHER_FILENAME			"patcher.exe"
+//#define		UPDATER_FILENAME			"Updater.exe"
+#define		UPDATER_FILENAME			"updater.exe"
+#define		UPDATER_NEW_FILENAME		"updater2.exe"
+#define		EXESWAPER_FILENAME			"exeswaper.exe"
+
+// info file
+#define		FILE_INFO_VERSION			"data/info/version.inf"
+
+#define		FILE_INFO_GUILD_VERSION		"data/info/guildversion.inf"
+#define		FILE_INFO_GUILDMARK_INFO	"data/info/guildmapper.inf"
+#define		FILE_INFO_GUILDMARK_SPK		"data/image/guildmark.spk"
+
+#define		FILE_INFO_UPDATECLIENT		"data/info/updateclient.inf"
+
+#define		FILE_INFO_NETMARBLE			"data/info/netmarble.inf"
+#define		FILE_INFO_TESTSERVER		"data/info/testserver.inf"
+
+#define		FILE_INFO_RESOLUTION		"data/info/resolution.inf"
+
+//by svi
+#define		FILE_INFO_CHANNEL			"data/info/channel.inf"
+#define		FILE_INFO_CHANNEL_DEFAULT	"data/info/selectedchannel.inf"
+
+#define		FILE_INFO_REAL_WEBPATH		"ip.php"
+#define		FILE_INFO_REAL_IPFILE		"ipaddr.dp2"
+#define		FILE_INFO_REAL_IPFILE_INF	"data/info/ipaddr.inf"
+
+#define		FILE_INFO_FILE_LIST			"FileList.inf"
+#define		FILE_INFO_FILE_LIST_VERSION	"FileListVersion.inf"
+
+#define		FILE_INFO_RECENT_FILE_LIST			"RecentFileList.inf"
+#define		FILE_INFO_RECENT_FILE_LIST_VERSION	"RecentFileListVersion.inf"
+
+// etc
+#define		WEBBROWSER_NAME				"iexplore.exe"
+
+#define		PATCH_DATA_EXT				".dp2"
+
+#define		FILE_DATA_PACKAGE			"data/dklegend"
+
+// url
+#define		URL_RECENT_PATCH_DATA_ROOT		"darkeden/recentpatchdata"
+#define		URL_RECENT_GUILDMARK_DATA_ROOT	"darkeden/guildMark"
+
+#ifdef __ENGLISH__//////////////////////////////////////////////////////////////////////////
+//zzi 
+#define		URL_NAVIGATE				"http://www.dklegend.com/client/"
+#define		URL_NAVIGATE_PATCH			"http://www.dklegend.com/client/"
+#define		URL_NAVIGATE_TEST			"http://www.dklegend.com/client/"
+#define		URL_NAVIGATE_TEST_PATCH		"http://www.dklegend.com/client/"
+
+
+
+#define		URL_NAVIGATE_BANNER			"http://www.dklegend.com/pg/banner.php"
+#define		URL_CUSTOMERS				"http://www.dklegend.com/"
+
+//20071210 - 다운로드 페이지 -- Check!! 현재버전에서는 글로벌 서비스에서만 이 URL을 사용한다.
+//									설치파일 버전을 체크 하여, 버전이 다를 경우, 다운로드 페이지로 연결..
+#define		URL_DOWNLOADPAGE			"http://www.dklegend.com/download.php"
+#define		URL_ACCOUNT					"http://www.dklegend.com/market"
+
+#else if __CHINESE__////////////////////////////////////////////////////////////////////
+
+#define		URL_NAVIGATE				"http://www.t1dk.com/client/"
+#define		URL_NAVIGATE_PATCH			"http://www.t1dk.com/client/"
+#define		URL_NAVIGATE_TEST			"http://www.t1dk.com/client/"
+#define		URL_NAVIGATE_TEST_PATCH		"http://www.t1dk.com/client/"
+
+
+
+#define		URL_NAVIGATE_BANNER			"http://www.t1dk.com/pg/banner.php"
+#define		URL_CUSTOMERS				"http://www.t1dk.com/"
+
+//20071210 - 다운로드 페이지 -- Check!! 현재버전에서는 글로벌 서비스에서만 이 URL을 사용한다.
+//									설치파일 버전을 체크 하여, 버전이 다를 경우, 다운로드 페이지로 연결..
+#define		URL_DOWNLOADPAGE			"http://www.t1dk.com/download.php"
+#define		URL_ACCOUNT					"http://www.t1dk.com/market"
+
+#endif
+
+#endif
+ 

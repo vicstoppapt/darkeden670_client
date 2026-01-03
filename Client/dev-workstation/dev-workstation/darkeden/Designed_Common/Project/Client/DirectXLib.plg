@@ -1,0 +1,100 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: DirectXLib - Win32 Debug--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP122.tmp" with contents
+[
+/nologo /MTd /W3 /Gm /GX /ZI /Od /I "..\\" /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /Fp"Debug/DirectXLib.pch" /Yu"DirectXlib_PCH.h" /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"D:\darkeden\Designed_Common\Project\Client\BIT_RES.CPP"
+"D:\darkeden\Designed_Common\Project\Client\CDirectDraw.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectDrawSurface.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectInput.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectMusic.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectSetupGetVersion.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectSound.cpp"
+"D:\darkeden\Designed_Common\Project\Client\CDirectSoundStream.cpp"
+"D:\darkeden\Designed_Common\Project\CMP3.cpp"
+"D:\darkeden\Designed_Common\Project\COGGSTREAM.CPP"
+"D:\darkeden\Designed_Common\Project\Client\header.cpp"
+"D:\darkeden\Designed_Common\Project\Client\huffman.cpp"
+"D:\darkeden\Designed_Common\Project\Client\mp3.cpp"
+"D:\darkeden\Designed_Common\Project\Client\reader.cpp"
+"D:\darkeden\Designed_Common\Project\Client\soundbuf.cpp"
+"D:\darkeden\Designed_Common\Project\Client\subdecoder.cpp"
+"D:\darkeden\Designed_Common\Project\Client\synfilt.cpp"
+]
+Creating command line "cl.exe @"C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP122.tmp"" 
+Creating temporary file "C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP123.tmp" with contents
+[
+/nologo /MTd /W3 /Gm /GX /ZI /Od /I "..\\" /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /Fp"Debug/DirectXLib.pch" /Yc"DirectXlib_PCH.h" /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"D:\darkeden\Designed_Common\Project\Client\DirectXLib_PCH.cpp"
+]
+Creating command line "cl.exe @"C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP123.tmp"" 
+Creating temporary file "C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP124.tmp" with contents
+[
+/nologo /out:"Debug\DX.lib" 
+.\Debug\BIT_RES.OBJ
+.\Debug\CDirectDraw.obj
+.\Debug\CDirectDrawSurface.obj
+.\Debug\CDirectInput.obj
+.\Debug\CDirectMusic.obj
+.\Debug\CDirectSetupGetVersion.obj
+.\Debug\CDirectSound.obj
+.\Debug\CDirectSoundStream.obj
+.\Debug\CMP3.obj
+.\Debug\COGGSTREAM.OBJ
+.\Debug\DirectXLib_PCH.obj
+.\Debug\header.obj
+.\Debug\huffman.obj
+.\Debug\mp3.obj
+.\Debug\reader.obj
+.\Debug\soundbuf.obj
+.\Debug\subdecoder.obj
+.\Debug\synfilt.obj
+.\vorbis.lib
+.\vorbisfile.lib
+.\ogg.lib
+]
+Creating command line "link.exe -lib @"C:\DOCUME~1\±è°æÁø\LOCALS~1\Temp\RSP124.tmp""
+<h3>Output Window</h3>
+Compiling...
+DirectXLib_PCH.cpp
+Compiling...
+BIT_RES.CPP
+D:\darkeden\Designed_Common\Project\Client\BIT_RES.CPP(2) : warning C4005: 'STRICT' : macro redefinition
+        c:\program files\microsoft visual studio\vc98\include\windef.h(15) : see previous definition of 'STRICT'
+CDirectDraw.cpp
+D:\darkeden\Designed_Common\Project\Client\CDirectDraw.cpp(873) : error C2511: 'SetAddGammaRamp' : overloaded member function 'void (char,char,char)' not found in 'CDirectDraw'
+        d:\darkeden\designed_common\project\client\cdirectdraw.h(30) : see declaration of 'CDirectDraw'
+CDirectDrawSurface.cpp
+CDirectInput.cpp
+CDirectMusic.cpp
+CDirectSetupGetVersion.cpp
+CDirectSound.cpp
+D:\darkeden\Designed_Common\Project\Client\CDirectSound.cpp(8) : fatal error C1083: Cannot open include file: 'FileIO.h': No such file or directory
+CDirectSoundStream.cpp
+CMP3.cpp
+fatal error C1083: Cannot open source file: 'D:\darkeden\Designed_Common\Project\CMP3.cpp': No such file or directory
+COGGSTREAM.CPP
+fatal error C1083: Cannot open source file: 'D:\darkeden\Designed_Common\Project\COGGSTREAM.CPP': No such file or directory
+header.cpp
+huffman.cpp
+mp3.cpp
+reader.cpp
+soundbuf.cpp
+subdecoder.cpp
+synfilt.cpp
+Generating Code...
+Error executing cl.exe.
+
+
+
+<h3>Results</h3>
+DX.lib - 4 error(s), 1 warning(s)
+</pre>
+</body>
+</html>
