@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="nFS">
+      <UniqueIdentifier>{31790448-B551-4DC4-AF44-0ABCD510D4C4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VFS">
+      <UniqueIdentifier>{A23179AC-6043-4BF7-B19C-FE2813E625AA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Class\nFS">
+      <UniqueIdentifier>{0EDF5F81-07FA-4E7B-AC41-8CC126DF2A95}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="FileIO\VFS">
+      <UniqueIdentifier>{A2E744AE-D107-453E-8507-7887E02E545A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="nFS\nfs.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_data.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_dt.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_fat.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_iio.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_nt.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="nFS\nfs_pmatch.cpp">
+      <Filter>nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="CNFS.cpp">
+      <Filter>Class\nFS</Filter>
+    </ClCompile>
+    <ClCompile Include="vfstream.cpp">
+      <Filter>VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="VirtualFileSystem.cpp">
+      <Filter>VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="CompressVirtualFileAccess.cpp">
+      <Filter>FileIO\VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="NormalFileIO.cpp">
+      <Filter>FileIO\VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="VirtualFileAccess.cpp">
+      <Filter>FileIO\VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="VirtualFileIO.cpp">
+      <Filter>FileIO\VFS</Filter>
+    </ClCompile>
+    <ClCompile Include="VirtualTempFileIO.cpp">
+      <Filter>FileIO\VFS</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="nFS\nfs.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_data.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_dt.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_fat.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_iio.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_nt.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="nFS\nfs_pmatch.h">
+      <Filter>nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="CNFS.h">
+      <Filter>Class\nFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VFS_Macro.h">
+      <Filter>VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VFS_Precompile.h">
+      <Filter>VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="vfstream.h">
+      <Filter>VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VirtualFileSystem.h">
+      <Filter>VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="CompressVirtualFileAccess.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="IFileIO.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="NormalFileIO.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VFA_Base.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VirtualFileAccess.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VirtualFileIO.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+    <ClInclude Include="VirtualTempFileIO.h">
+      <Filter>FileIO\VFS</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup />
+</Project>

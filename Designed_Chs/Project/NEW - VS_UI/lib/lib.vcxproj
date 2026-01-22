@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="ReleaseLog|Win32">
+      <Configuration>ReleaseLog</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <RootNamespace></RootNamespace>
+    <SccProjectName />
+    <SccLocalPath />
+    <ProjectGuid>{CCD043E3-45F2-45B6-A87B-030D2235B128}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLog|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings"></ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLog|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLog|Win32'">
+    <OutDir>.\ReleaseLog\</OutDir>
+    <IntDir>.\ReleaseLog\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <GenerateManifest>false</GenerateManifest>
+    <TargetName>lib</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\Release\</OutDir>
+    <IntDir>.\Release\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <GenerateManifest>false</GenerateManifest>
+    <TargetName>lib</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\Debug\</OutDir>
+    <IntDir>.\Debug\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <GenerateManifest>false</GenerateManifest>
+    <TargetName>lib</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLog|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\Imm;..\..\..\..\Designed_Common\Lib\ui;..\..\..\..\Designed_Common\Project\Client;..\..\..\..\Designed_Common\Project\Client\VirtualFileSystem;..\..\..\..\Designed_Common\Project\Client\D3DLib;..\..\..\..\Designed_Common\Project\Client\SpriteLib;..\..\..\..\Designed_Common\Project\Client\FrameLib;..\..\..\..\Designed_Common\Project\Client\SXml;..\..\..\..\common_libs\vs2003lib\Include;$(SolutionDir);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link></Link>
+    <Midl>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0412</Culture>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\..\..\Designed_Common\Project\Client\VirtualFileSystem;..\..\..\..\Designed_Common\Project\Client\RarLib;..\..\..\..\Designed_Common\Project\Client;..\..\..\..\Designed_Common\Project\Client\DXLib;..\..\..\..\Designed_Common\Project\Client\D3DLib;..\..\..\..\Designed_Common\Project\Client\SpriteLib;..\..\..\..\Designed_Common\Project\Client\FrameLib;..\..\..\..\Designed_Common\Project\Client\Packet;..\..\..\..\Designed_Common\Project\Client\AtlTypes;..\..\..\..\Designed_Common\Project\Client\OggLib;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\Imm;..\..\..\..\Designed_Common\Project\Client\lib;..\..\..\..\Designed_Common\Lib;..\..\..\..\Designed_Common\Lib\ui;..\..\..\..\Designed_Common\Project\Client\SXml;..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib;..\..\..\..\common_libs\vs2003lib\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>__DESIGNED_CHS;WIN32;NDEBUG;_LIB;__WINDOWS__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile></PrecompiledHeaderOutputFile>
+      <AssemblerOutput>All</AssemblerOutput>
+      <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
+      <ObjectFileName>.\Release/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CompileAs>Default</CompileAs>
+    </ClCompile>
+    <Lib>
+      <OutputFile>..\..\..\..\Designed_Common\Lib\ui\VS_UI_release.lib</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </Lib>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0412</Culture>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\..\..\..\Designed_Common\Project\Client\VirtualFileSystem;..\..\..\..\Designed_Common\Project\Client\RarLib;..\..\..\..\Designed_Common\Project\Client;..\..\..\..\Designed_Common\Project\Client\DXLib;..\..\..\..\Designed_Common\Project\Client\D3DLib;..\..\..\..\Designed_Common\Project\Client\SpriteLib;..\..\..\..\Designed_Common\Project\Client\FrameLib;..\..\..\..\Designed_Common\Project\Client\Packet;..\..\..\..\Designed_Common\Project\Client\AtlTypes;..\..\..\..\Designed_Common\Project\Client\OggLib;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header;..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\Imm;..\..\..\..\Designed_Common\Project\Client\lib;..\..\..\..\Designed_Common\Lib;..\..\..\..\Designed_Common\Lib\ui;..\..\..\..\Designed_Common\Project\Client\SXml;..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib;..\..\..\..\common_libs\vs2003lib\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>__DESIGNED_CHS;WIN32;_DEBUG;_LIB;__WINDOWS__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile></PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\Debug/</AssemblerListingLocation>
+      <ObjectFileName>.\Debug/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Debug/</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <CompileAs>Default</CompileAs>
+    </ClCompile>
+    <Lib>
+      <OutputFile>..\..\..\..\Designed_Common\Lib\ui\VS_UI_Debug.lib</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </Lib>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0412</Culture>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib\AcceleratorDef.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\AcceleratorManager.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\Client\AtlTypes\atltypes.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul\Ci.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\Imm\CImm.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib\Client_PCH.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul\FL2.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\KeyAccelerator.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\mother.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\OperatorCategory.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\pi_core.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\SkinManager.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\Client\SXml\SXml.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_button.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\U_edit.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_scrollbar.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_window.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Base.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_BBS.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Control.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_DESC.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Description.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Descriptor.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Dialog.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_ELEVATOR.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Exception.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Exchange.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_ExtraDialog.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Friend_System.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Game.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GameCommon.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_gamecommon2.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GameOusters.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GameSlayer.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GameVampire.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GlobalResource.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_GPS.CPP" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Helper.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_INDOUN_NPC_DIALOG.CPP" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Item.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Message.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_mouse_pointer.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_NewTitle.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Operator.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_PetMixingForge.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_PetStorage.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_PremiumGiveItem.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_progress.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Shop.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_skill_tree.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Storage.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_TaxRate.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_TIMECOUNT.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Title.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_TITLE_SHOWCHAR.CPP" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_Tutorial.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_ui_result_receiver.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_UserGrade.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_util.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_WebBrowser.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_widget.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\VS_UI_WorldMap.cpp" />
+    <ClCompile Include="..\..\..\..\Designed_Common\Project\Client\TickTimer.cpp" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\AcceleratorDef.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\AcceleratorManager.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul\Ci.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\lib\Client_PCH.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\hangul\Fl2.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\KeyAccelerator.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\mother.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\PI.H" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\pi_core.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\SimpleDataList.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\SkinManager.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_button.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\U_edit.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_scrollbar.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\u_window.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\widget\unicorn.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Base.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_bbs.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Control.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_DESC.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Description.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_descriptor.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Dialog.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_ELEVATOR.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Exchange.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_ExtraDialog.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_filepath.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Friend_System.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Game.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GameCommon.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GameCommon2.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GameOusters.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GameSlayer.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GameVampire.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GlobalResource.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_GPS.H" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Helper.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_INDOUN_NPC_DIALOG.H" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_item.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Message.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_mouse_pointer.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Newtitle.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Operator.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_PetMixingForge.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_PetStorage.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_PremiumGiveItem.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_progress.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Shop.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_skill_tree.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Storage.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_TaxRate.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_TIMECOUNT.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_title.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_Tutorial.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_ui_result_receiver.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_UIMessage.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_UserGrade.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_util.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_WebBrowser.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\NEW - VS_UI\src\header\VS_UI_widget.h" />
+    <ClInclude Include="..\..\..\..\Designed_Common\Project\Client\TickTimer.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

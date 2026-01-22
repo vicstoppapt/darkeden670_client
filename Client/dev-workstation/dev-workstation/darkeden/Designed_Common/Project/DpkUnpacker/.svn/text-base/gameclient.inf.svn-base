@@ -1,7 +1,0 @@
-MaxLoginServerAddress : 1
-LoginServerAddress : 192.168.1.127
-LoginServerAddress1 : 192.168.1.127
-LoginServerPortNum : 1
-LoginServerPort : 9909
-LoginServerCheckPort : 9907
-LoginServerBasePort : 9909

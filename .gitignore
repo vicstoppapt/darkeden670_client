@@ -1,138 +1,128 @@
-# Build artifacts
-*.o
-*.a
-*.so
-*.dll
-*.exe
-*.pdb
-*.obj
-*.lib
-*.map
+# DarkEden 670 Client - Git Ignore
 
-# Binaries
-bin/
-lib/
+# Arquivos compilados e builds
+*.obj
+*.pdb
+*.exe
+*.dll
+*.lib
+*.exp
+*.ilk
+*.idb
+*.pch
+*.sbr
+*.cod
+*.htm
+*.res
+*.aps
+*.opt
+*.plg
+*.ncb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Diretórios de build
+Debug/
+Release/
+*.Debug/
+*.Release/
+Win32/
+x64/
+*.Win32/
+*.x64/
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
+*.~*
+*~
+Thumbs.db
+.DS_Store
+
+# Arquivos de dados pesados (disponíveis no Google Drive)
+nostaugia/
+*.rpk
 *.bin
+*.smp
+*.ssi
+*.ogg
+*.wav
+*.dmp
+*.zip
+*.tar.gz
 
 # Logs
-log/
 *.log
-*.log.*
+*.txt
+!FileListVersion.inf
+!guildmapper_new.inf
+!item.inf
+!interface.ini
 
-# Temporary files
+# Arquivos de configuração local
+UserSet/
+ScreenShot/
 temp/
-tmp/
-*.tmp
-*.swp
-*.swo
-*~
-*.bak
+Dump/
+
+# Arquivos de projeto VS6 (manter .dsp e .dsw, excluir temporários)
+*.opt
+*.plg
+*.ncb
+
+# Arquivos de projeto VS (manter .vcxproj, excluir temporários)
+*.vcxproj.user
+*.sdf
+*.opensdf
+*.db
+
+# Arquivos de backup
 *.backup
-*.old
+*_backup_*
+backup_*
 
-# IDE files
+# Arquivos de sistema
+.vs/
 .vscode/
-.idea/
-*.sln
-*.vcxproj
-*.vcxproj.filters
-*.user
 *.suo
+*.user
+*.userosscache
+*.sln.docstates
 
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Arquivos específicos do projeto
+common_libs/**/*.lib
+common_libs/**/*.Lib
+Lib/**/*.lib
+Lib/**/*.LIB
 
-# Database dumps (keep structure, ignore large data dumps)
-*.sql.gz
-*.sql.bz2
-database_backup/*.sql
-!database_backup/*_modern.sql
-!initdb/*.sql
-
-# Large binary files
-*.zip
-*.rar
-*.7z
-*.tar.gz
-*.tar.bz2
-
-# Client build artifacts and large files
-Client/dev-workstation/
-Client/prod-environment/
-Client/installers/
-Client/[SYSTEM]/
-
-# CVS directories
-**/CVS/
-
-# Core library build artifacts
-server/dev-workstation/src/Core/*.o
-server/dev-workstation/src/Core/*.a
-
-# Packet library build artifacts
-server/dev-workstation/src/Core/*packets/**/*.o
-server/dev-workstation/src/Core/*packets/**/*.a
-
-# Server build artifacts
-server/dev-workstation/src/server/**/*.o
-server/dev-workstation/src/server/**/*.a
-server/dev-workstation/src/server/**/*.gs.o
-server/dev-workstation/src/server/**/*.ls.o
-server/dev-workstation/src/server/**/*.ss.o
-server/dev-workstation/src/server/**/*.us.o
-
-# Makefile backups
-**/Makefile.bak*
-**/Makefile.old
-
-# Test files
-test.cpp
-testdb.cpp
-*.test
-
-# Password files (security)
-**/PASSWORDS.txt
-**/*password*
-**/*secret*
-
-# Large SQL dumps (keep modernized versions)
-modernization/database_backup/*.sql
-!modernization/initdb/*.sql
-
-# VM shared folders (temporary)
-vm_shared/
-vm_shared_*/
-
-# Old backup directories
-*_backup/
-backup_*/
-*.backup_*
-
-# Korean recovery backups (keep structure, ignore large files)
-korean_recovery_backup/**/*.o
-korean_recovery_backup/**/*.a
-
-# Configuration backups
-*.conf.backup*
-*.conf.old
-
-# Documentation build artifacts
-docs/_build/
-docs/.doctrees/
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Node modules (if any)
-node_modules/
-
-# Environment files
-.env
-.env.local
-
+# Mantém apenas código fonte
+!*.cpp
+!*.h
+!*.hpp
+!*.c
+!*.H
+!*.rc
+!*.rc2
+!*.ico
+!*.cur
+!*.bmp
+!*.inf
+!*.ini
+!*.txt
+!*.md
+!*.sh
+!*.bat
+!*.ps1
+!*.iss
+!*.json
+!*.xml
+!*.dsp
+!*.dsw
+!*.vcxproj
+!*.vcxproj.filters
+!*.sln
+!.gitignore
+!README.md
